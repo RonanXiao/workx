@@ -43,12 +43,26 @@ fn resolve_binary() -> Option<String> {
         "workx-app-server"
     };
 
-    env::var_os("PATH")
+    if let Some(candidate) = env::var_os("PATH")
         .into_iter()
         .flat_map(|paths| env::split_paths(&paths).collect::<Vec<_>>())
         .map(|dir| dir.join(fallback_name))
         .find(|candidate| candidate.is_file())
-        .map(|path| path.to_string_lossy().into_owned())
+    {
+        return Some(candidate.to_string_lossy().into_owned());
+    }
+
+    // Tauri sidecar binaries live next to the desktop executable in release bundles.
+    if let Ok(current_exe) = env::current_exe() {
+        if let Some(dir) = current_exe.parent() {
+            let candidate = dir.join(fallback_name);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    None
 }
 
 impl AppServerManager {
