@@ -1015,3 +1015,81 @@ pre {
 .placeholder-pane h2 {
   margin-top: 0;
 }
+
+/* Conversation cards */
+.message-list {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.message {
+  border: none;
+  background: transparent;
+}
+
+.message.user {
+  align-self: flex-end;
+}
+
+.user-bubble {
+  background: var(--surface-2);
+  border-radius: 16px;
+  padding: 10px 14px;
+  color: var(--text);
+  max-width: 80%;
+}
+
+.message.assistant {
+  align-self: flex-start;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.assistant-text {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.message.tool-card,
+.message.system-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.message.tool-card summary,
+.message.system-card summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+}
+
+.message.tool-card summary::-webkit-details-marker,
+.message.system-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-icon {
+  font-size: 16px;
+}
+
+.message.tool-card pre,
+.message.system-card pre {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: 0 0 14px 14px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}

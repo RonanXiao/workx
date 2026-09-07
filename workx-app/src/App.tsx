@@ -177,6 +177,16 @@ function formatThreadStatus(status: unknown): string {
   return "idle";
 }
 
+function toolIcon(label?: string): string {
+  if (!label) return "🧩";
+  if (label.includes("command")) return "🖥️";
+  if (label.includes("diff") || label.includes("file")) return "📝";
+  if (label.includes("plan")) return "🗺️";
+  if (label.includes("reasoning")) return "🧠";
+  if (label.includes("mcp") || label.includes("tool")) return "🔧";
+  return "🧩";
+}
+
 function bytesToBase64(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -900,6 +910,53 @@ function App() {
     setRightOpen(true);
   }
 
+  function renderMessage(message: ConversationMessage) {
+    const body = message.text || "(empty)";
+    if (message.role === "user") {
+      return (
+        <div key={message.id} className="message user">
+          <div className="user-bubble">{message.text || ""}</div>
+        </div>
+      );
+    }
+    if (message.role === "assistant") {
+      return (
+        <div key={message.id} className="message assistant">
+          <div className="assistant-text">{body}</div>
+          {message.status === "streaming" && <span className="streaming">streaming…</span>}
+        </div>
+      );
+    }
+    if (message.role === "tool") {
+      return (
+        <details key={message.id} className="message tool-card">
+          <summary>
+            <span className="tool-icon">{toolIcon(message.label)}</span>
+            <span>{message.label || "Tool"}</span>
+            <span className="muted">{message.status}</span>
+          </summary>
+          <pre>{body}</pre>
+        </details>
+      );
+    }
+    if (message.role === "system") {
+      return (
+        <details key={message.id} className="message system-card">
+          <summary>
+            <span className="tool-icon">{toolIcon(message.label)}</span>
+            <span>{message.label || "Detail"}</span>
+          </summary>
+          <pre>{body}</pre>
+        </details>
+      );
+    }
+    return (
+      <div key={message.id} className="message error">
+        <pre>{body}</pre>
+      </div>
+    );
+  }
+
   const activeTitle = activeThread?.name || activeThread?.preview || "New Workx chat";
 
   return (
@@ -1030,16 +1087,7 @@ function App() {
                 </div>
               ) : (
                 <div className="message-list">
-                  {visibleMessages.map((message) => (
-                    <div key={message.id} className={`message ${message.role} ${message.status}`}>
-                      <div className="message-head">
-                        <strong>{message.role}</strong>
-                        {message.label && <span>{message.label}</span>}
-                        {message.status === "streaming" && <span className="streaming">streaming…</span>}
-                      </div>
-                      <pre>{message.text || "(empty)"}</pre>
-                    </div>
-                  ))}
+                  {visibleMessages.map((message) => renderMessage(message))}
                 </div>
               )}
             </div>
