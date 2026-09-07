@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppServerClient,
   type AppServerStatus,
@@ -28,6 +28,13 @@ interface ThreadStartResponse {
   cwd: string;
 }
 
+interface ThreadResumeResponse {
+  thread: Thread;
+  model: string;
+  modelProvider: string;
+  cwd: string;
+}
+
 interface TurnStartResponse {
   turn: {
     id: string;
@@ -40,6 +47,20 @@ interface InitializeResponse {
   workxHome: string;
   platformFamily: string;
   platformOs: string;
+}
+
+type MessageRole = "user" | "assistant" | "tool" | "system" | "error";
+type MessageStatus = "streaming" | "done" | "error";
+
+interface ConversationMessage {
+  id: string;
+  threadId: string;
+  turnId?: string;
+  itemId?: string;
+  role: MessageRole;
+  text: string;
+  status: MessageStatus;
+  label?: string;
 }
 
 type EventKind = "notification" | "response" | "error" | "system";
@@ -65,11 +86,16 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" ? (value as Record<string, any>) : {};
+}
+
 function App() {
   const [client] = useState(() => new AppServerClient());
   const [status, setStatus] = useState<AppServerStatus>({ running: false, binary: null });
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +104,11 @@ function App() {
   const [rightTab, setRightTab] = useState<"events" | "status">("events");
   const eventId = useRef(0);
 
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => message.threadId === activeThread?.id),
+    [activeThread?.id, messages],
+  );
+
   function pushEvent(
     kind: EventKind,
     title: string,
@@ -85,6 +116,179 @@ function App() {
   ): void {
     const id = ++eventId.current;
     setEvents((current) => [{ id, kind, title, detail, time: formatTime(new Date()) }, ...current].slice(0, 200));
+  }
+
+  function upsertMessage(
+    id: string,
+    update: (current: ConversationMessage | undefined) => ConversationMessage,
+  ): void {
+    setMessages((current) => {
+      const index = current.findIndex((message) => message.id === id);
+      if (index === -1) {
+        return [update(undefined), ...current];
+      }
+      const next = [...current];
+      next[index] = update(next[index]);
+      return next;
+    });
+  }
+
+  function handleNotification(method: string, params: unknown): void {
+    const record = asRecord(params);
+    const threadId = typeof record.threadId === "string" ? record.threadId : "";
+    const turnId = typeof record.turnId === "string" ? record.turnId : undefined;
+    const itemId = typeof record.itemId === "string" ? record.itemId : undefined;
+
+    switch (method) {
+      case "item/agentMessage/delta":
+        if (threadId && itemId && typeof record.delta === "string") {
+          upsertMessage(`assistant:${itemId}`, (current) => ({
+            id: `assistant:${itemId}`,
+            threadId,
+            turnId,
+            itemId,
+            role: "assistant",
+            status: "streaming",
+            text: `${current?.text ?? ""}${record.delta}`,
+            label: "agent message",
+          }));
+        }
+        break;
+
+      case "item/reasoning/textDelta":
+        if (threadId && itemId && typeof record.delta === "string") {
+          upsertMessage(`reasoning:${itemId}`, (current) => ({
+            id: `reasoning:${itemId}`,
+            threadId,
+            turnId,
+            itemId,
+            role: "system",
+            status: "streaming",
+            text: `${current?.text ?? ""}${record.delta}`,
+            label: "reasoning",
+          }));
+        }
+        break;
+
+      case "item/commandExecution/outputDelta":
+        if (threadId && itemId && typeof record.delta === "string") {
+          upsertMessage(`command:${itemId}`, (current) => ({
+            id: `command:${itemId}`,
+            threadId,
+            turnId,
+            itemId,
+            role: "tool",
+            status: "streaming",
+            text: `${current?.text ?? ""}${record.delta}`,
+            label: "command output",
+          }));
+        }
+        break;
+
+      case "turn/diff/updated":
+        if (threadId && typeof record.diff === "string") {
+          upsertMessage(`diff:${record.turnId ?? "current"}`, () => ({
+            id: `diff:${record.turnId ?? "current"}`,
+            threadId,
+            turnId: record.turnId ?? turnId,
+            role: "tool",
+            status: "streaming",
+            text: record.diff,
+            label: "diff",
+          }));
+        }
+        break;
+
+      case "turn/plan/updated":
+        if (threadId) {
+          const plan = Array.isArray(record.plan)
+            ? record.plan.map((step: Record<string, any>) => step.step).join("\n")
+            : prettyJson(record.plan);
+          upsertMessage(`plan:${record.turnId ?? "current"}`, () => ({
+            id: `plan:${record.turnId ?? "current"}`,
+            threadId,
+            turnId: record.turnId ?? turnId,
+            role: "system",
+            status: "streaming",
+            text: plan,
+            label: "plan",
+          }));
+        }
+        break;
+
+      case "item/completed":
+        if (threadId && itemId) {
+          upsertMessage(`assistant:${itemId}`, (current) =>
+            current
+              ? { ...current, status: "done" }
+              : {
+                  id: `assistant:${itemId}`,
+                  threadId,
+                  turnId,
+                  itemId,
+                  role: "assistant",
+                  status: "done",
+                  text: "",
+                  label: "item completed",
+                },
+          );
+        }
+        break;
+
+      case "turn/completed":
+        if (threadId && turnId) {
+          setMessages((current) =>
+            current.map((message) =>
+              message.threadId === threadId && message.turnId === turnId
+                ? { ...message, status: "done" }
+                : message,
+            ),
+          );
+        }
+        break;
+
+      case "thread/name/updated":
+        if (typeof record.threadId === "string" && typeof record.name === "string") {
+          setThreads((current) =>
+            current.map((thread) =>
+              thread.id === record.threadId ? { ...thread, name: record.name } : thread,
+            ),
+          );
+          setActiveThread((current) => {
+            if (!current || current.id !== record.threadId) return current;
+            return { ...current, name: String(record.name) };
+          });
+        }
+        break;
+
+      case "thread/status/changed":
+        if (typeof record.threadId === "string" && typeof record.status === "string") {
+          setThreads((current) =>
+            current.map((thread) =>
+              thread.id === record.threadId ? { ...thread, status: record.status } : thread,
+            ),
+          );
+        }
+        break;
+
+      case "error":
+        if (threadId) {
+          const errorRecord = asRecord(record.error);
+          upsertMessage(`error:${turnId ?? "current"}`, () => ({
+            id: `error:${turnId ?? "current"}`,
+            threadId,
+            turnId,
+            role: "error",
+            status: "error",
+            text: typeof errorRecord.message === "string" ? errorRecord.message : prettyJson(record.error),
+            label: "error",
+          }));
+        }
+        break;
+
+      default:
+        break;
+    }
   }
 
   async function initializeClient(): Promise<void> {
@@ -139,6 +343,7 @@ function App() {
 
       if (message.method) {
         pushEvent("notification", message.method, prettyJson(message.params));
+        handleNotification(message.method, message.params);
         return;
       }
 
@@ -147,6 +352,24 @@ function App() {
       }
     });
   }, [client]);
+
+  async function selectThread(thread: Thread): Promise<void> {
+    setActiveThread(thread);
+    setError(null);
+    try {
+      const response = await client.request<ThreadResumeResponse>("thread/resume", {
+        threadId: thread.id,
+        excludeTurns: true,
+      });
+      setActiveThread(response.thread);
+      setThreads((current) =>
+        current.map((item) => (item.id === response.thread.id ? response.thread : item)),
+      );
+      pushEvent("system", "thread/resume", thread.id);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
 
   async function startNewThread(): Promise<void> {
     setError(null);
@@ -184,6 +407,15 @@ function App() {
         ]);
       }
 
+      const userMessage: ConversationMessage = {
+        id: `user:${Date.now()}`,
+        threadId: thread.id,
+        role: "user",
+        status: "done",
+        text,
+      };
+      setMessages((current) => [...current, userMessage]);
+
       const response = await client.request<TurnStartResponse>("turn/start", {
         threadId: thread.id,
         input: [{ type: "text", text }],
@@ -216,7 +448,7 @@ function App() {
             <button
               key={thread.id}
               className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
-              onClick={() => setActiveThread(thread)}
+              onClick={() => void selectThread(thread)}
             >
               <span className="thread-title">{thread.name || thread.preview || "Untitled"}</span>
               <span className="thread-meta">
@@ -249,19 +481,34 @@ function App() {
           <div className="chat-pane">
             <div className="chat-body">
               {error && <div className="error-banner">{error}</div>}
-              {activeThread ? (
-                <div className="thread-summary">
-                  <h1>{activeTitle}</h1>
-                  <p className="muted">
-                    Thread {activeThread.id} · source {activeThread.source ?? "unknown"}
-                  </p>
-                </div>
+              {visibleMessages.length === 0 ? (
+                activeThread ? (
+                  <div className="thread-summary">
+                    <h1>{activeTitle}</h1>
+                    <p className="muted">
+                      Thread {activeThread.id} · source {activeThread.source ?? "unknown"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <h1>Workx Desktop</h1>
+                    <p className="muted">
+                      Start a chat to inspect, edit, and run code in this workspace.
+                    </p>
+                  </div>
+                )
               ) : (
-                <div className="empty-state">
-                  <h1>Workx Desktop</h1>
-                  <p className="muted">
-                    Start a chat to inspect, edit, and run code in this workspace.
-                  </p>
+                <div className="message-list">
+                  {visibleMessages.map((message) => (
+                    <div key={message.id} className={`message ${message.role} ${message.status}`}>
+                      <div className="message-head">
+                        <strong>{message.role}</strong>
+                        {message.label && <span>{message.label}</span>}
+                        {message.status === "streaming" && <span className="streaming">streaming…</span>}
+                      </div>
+                      <pre>{message.text || "(empty)"}</pre>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

@@ -282,3 +282,59 @@ pre {
 .error-text {
   color: #fecaca;
 }
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.message {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.message.assistant {
+  background: #141820;
+}
+
+.message.user {
+  background: #17202b;
+}
+
+.message.tool {
+  background: #171d16;
+}
+
+.message.error {
+  border-color: #7f1d1d;
+}
+
+.message-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.message-head strong {
+  color: var(--text);
+}
+
+.streaming {
+  color: var(--accent);
+}
+
+.message pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  font-size: 13px;
+}
