@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prepare:app-server": "node scripts/prepare-app-server.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

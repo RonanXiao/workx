@@ -4,7 +4,7 @@ A Tauri + React desktop client for Workx. It connects to the Workx app-server ov
 
 ## Status
 
-Early scaffold. The desktop shell starts the app-server, initializes the JSON-RPC connection, lists threads, starts new threads, and submits text turns. Event streaming and approval/diff/terminal surfaces are represented by the event pane and will be wired to richer UI next.
+Early desktop client. The Tauri shell starts and supervises `workx-app-server`, initializes the JSON-RPC connection, lists/resumes threads, starts new threads, submits text turns, renders streamed agent/tool/diff/plan output, handles command and file-change approvals, and provides a `command/exec`-backed integrated terminal.
 
 ## Prerequisites
 
@@ -29,9 +29,19 @@ npm run tauri dev
 
 ## Build
 
+Prepare the app-server sidecar first, then bundle the desktop app:
+
 ```bash
 cd workx-app
+npm run prepare:app-server
 npm run tauri build
 ```
 
-The Tauri project targets macOS and Windows by default through Tauri's bundler.
+For development, set `WORKX_APP_SERVER_BIN` to a locally built debug binary:
+
+```bash
+export WORKX_APP_SERVER_BIN="$PWD/workx-rs/target/debug/workx-app-server"
+npm run tauri dev
+```
+
+The Tauri project targets macOS and Windows by default through Tauri's bundler. Cross-compilation targets can be prepared by setting `TAURI_ENV_TARGET_TRIPLE` before `prepare:app-server`.
