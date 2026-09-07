@@ -4,7 +4,7 @@ A Tauri + React desktop client for Workx. It connects to the Workx app-server ov
 
 ## Status
 
-Early desktop client. The Tauri shell starts and supervises `workx-app-server`, initializes the JSON-RPC connection, lists/resumes threads with history, starts threads in a selected folder, submits text turns, renders streamed agent/tool/diff/plan output, handles command and file-change approvals, provides a `command/exec`-backed integrated terminal, exposes model and reasoning-effort pickers from `model/list`, and browses/previews files under the active thread cwd.
+Early desktop client styled after the Codex desktop app. The Tauri shell starts and supervises `workx-app-server`, initializes the JSON-RPC connection, lists/resumes threads with history, starts threads in a selected folder, submits text turns, renders streamed agent/tool/diff/plan output, handles command and file-change approvals, provides a `command/exec`-backed integrated terminal, exposes model and reasoning-effort pickers from `model/list`, browses/previews files under the active thread cwd, and includes a settings dialog for provider/model/reasoning-effort plus a light/dark theme toggle.
 
 ## Prerequisites
 
