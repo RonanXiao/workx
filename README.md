@@ -21,7 +21,7 @@ brew trust ronanxiao/workx
 brew install workx
 ```
 
-当前 formula 仅支持 macOS，使用仓库打包脚本从源码编译安装，首次安装耗时较长。
+当前 formula 仅支持 macOS；Apple Silicon 直接下载预编译包，Intel 仍需源码编译。
 如需安装最新 `main`，可执行：
 
 ```sh
