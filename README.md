@@ -4,7 +4,7 @@ workx 是基于 OpenAI Codex `rust-v0.153.4` 的独立项目。
 
 - 上游源码提交：`3d2ee51ca2d5db578f328aa75e20aa22c0197c9a`
 - 项目仓库：<https://github.com/RonanXiao/workx>
-- 当前项目版本：`0.0.1`
+- 当前项目版本：`0.0.2`
 - CLI 命令：`workx`
 - Rust workspace：`workx-rs/`，crate 前缀：`workx-`
 - 默认配置与数据目录：`~/.workx`，覆盖变量：`WORKX_HOME`

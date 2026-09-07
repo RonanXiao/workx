@@ -1,6 +1,6 @@
 {
   "name": "@ronanxiao/workx",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Workx CLI is an independent coding agent derived from OpenAI Codex that runs locally on your computer.",
   "license": "Apache-2.0",
   "bin": {
