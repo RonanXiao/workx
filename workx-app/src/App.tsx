@@ -68,6 +68,17 @@ interface InitializeResponse {
   platformOs: string;
 }
 
+interface ModelOption {
+  id: string;
+  model: string;
+  displayName: string;
+  isDefault: boolean;
+}
+
+interface ModelListResponse {
+  data: ModelOption[];
+}
+
 type MessageRole = "user" | "assistant" | "tool" | "system" | "error";
 type MessageStatus = "streaming" | "done" | "error";
 
@@ -245,6 +256,8 @@ function App() {
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [input, setInput] = useState("");
   const [threadSearch, setThreadSearch] = useState("");
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
@@ -558,6 +571,15 @@ function App() {
     if (list.data.length > 0 && !activeThread) {
       setActiveThread(list.data[0]);
     }
+
+    const modelList = await client.request<ModelListResponse>("model/list", { limit: 100 });
+    setModels(modelList.data);
+    setSelectedModel((current) =>
+      current ??
+      modelList.data.find((model) => model.isDefault)?.model ??
+      modelList.data[0]?.model ??
+      null,
+    );
   }
 
   useEffect(() => {
@@ -625,6 +647,7 @@ function App() {
     try {
       const response = await client.request<ThreadResumeResponse>("thread/resume", {
         threadId: thread.id,
+        ...(selectedModel ? { model: selectedModel } : {}),
       });
       setActiveThread(response.thread);
       setThreads((current) =>
@@ -647,7 +670,10 @@ function App() {
       const cwd = Array.isArray(selected) ? selected[0] : selected;
       if (!cwd) return;
 
-      const response = await client.request<ThreadStartResponse>("thread/start", { cwd });
+      const response = await client.request<ThreadStartResponse>("thread/start", {
+        cwd,
+        ...(selectedModel ? { model: selectedModel } : {}),
+      });
       setActiveThread(response.thread);
       setThreads((current) => [
         response.thread,
@@ -662,7 +688,9 @@ function App() {
   async function startNewThread(): Promise<void> {
     setError(null);
     try {
-      const response = await client.request<ThreadStartResponse>("thread/start", {});
+      const response = await client.request<ThreadStartResponse>("thread/start", {
+        ...(selectedModel ? { model: selectedModel } : {}),
+      });
       setActiveThread(response.thread);
       setThreads((current) => [
         response.thread,
@@ -686,7 +714,9 @@ function App() {
     try {
       let thread = activeThread;
       if (!thread) {
-        const startResponse = await client.request<ThreadStartResponse>("thread/start", {});
+        const startResponse = await client.request<ThreadStartResponse>("thread/start", {
+          ...(selectedModel ? { model: selectedModel } : {}),
+        });
         thread = startResponse.thread;
         setActiveThread(thread);
         setThreads((current) => [
@@ -707,6 +737,7 @@ function App() {
       const response = await client.request<TurnStartResponse>("turn/start", {
         threadId: thread.id,
         input: [{ type: "text", text }],
+        ...(selectedModel ? { model: selectedModel } : {}),
       });
 
       setActiveTurnId(response.turn.id);
@@ -766,6 +797,19 @@ function App() {
         <header className="topbar">
           <div className="topbar-title">{activeTitle}</div>
           <div className="topbar-actions">
+            <select
+              className="model-picker"
+              value={selectedModel ?? ""}
+              onChange={(event) => setSelectedModel(event.currentTarget.value || null)}
+              disabled={booting || models.length === 0}
+            >
+              {models.length === 0 && <option value="">Loading models…</option>}
+              {models.map((model) => (
+                <option key={model.id} value={model.model}>
+                  {model.displayName || model.model}
+                </option>
+              ))}
+            </select>
             <button onClick={startNewThread} disabled={booting}>New</button>
             <button onClick={() => setRightTab("approvals")}>
               Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
