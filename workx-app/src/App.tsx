@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   AppServerClient,
   type AppServerStatus,
@@ -639,6 +640,25 @@ function App() {
     }
   }
 
+  async function openFolder(): Promise<void> {
+    setError(null);
+    try {
+      const selected = await openDialog({ directory: true, multiple: false });
+      const cwd = Array.isArray(selected) ? selected[0] : selected;
+      if (!cwd) return;
+
+      const response = await client.request<ThreadStartResponse>("thread/start", { cwd });
+      setActiveThread(response.thread);
+      setThreads((current) => [
+        response.thread,
+        ...current.filter((thread) => thread.id !== response.thread.id),
+      ]);
+      pushEvent("system", "thread/start with folder", cwd);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   async function startNewThread(): Promise<void> {
     setError(null);
     try {
@@ -706,6 +726,9 @@ function App() {
         <div className="sidebar-header">
           <button className="new-chat" onClick={startNewThread} disabled={booting}>
             + New chat
+          </button>
+          <button onClick={() => void openFolder()} disabled={booting}>
+            Open Folder
           </button>
           <input
             className="search"

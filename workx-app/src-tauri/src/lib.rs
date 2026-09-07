@@ -8,6 +8,7 @@ use app_server::AppServerManager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppServerManager::default())
         .invoke_handler(tauri::generate_handler![
             app_server::app_server_start,
