@@ -94,6 +94,30 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function bytesToBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function base64ToString(value: string): string {
+  try {
+    const binary = atob(value);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return value;
+  }
+}
+
+function interactiveShellArgv(): string[] {
+  const isWindows = navigator.platform.toLowerCase().includes("win");
+  return isWindows ? ["powershell.exe", "-NoLogo"] : ["/bin/zsh", "-l"];
+}
+
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
 }
@@ -109,8 +133,12 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
-  const [rightTab, setRightTab] = useState<"events" | "approvals" | "status">("events");
+  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "status">("events");
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const [terminalProcessId, setTerminalProcessId] = useState<string | null>(null);
+  const [terminalOutput, setTerminalOutput] = useState("");
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalRunning, setTerminalRunning] = useState(false);
   const eventId = useRef(0);
 
   const visibleMessages = useMemo(
@@ -163,6 +191,58 @@ function App() {
     }
   }
 
+  async function startTerminal(): Promise<void> {
+    if (terminalRunning) return;
+    const processId = `workx-terminal-${Date.now()}`;
+    setTerminalProcessId(processId);
+    setTerminalOutput("");
+    setTerminalRunning(true);
+    setRightTab("terminal");
+    setError(null);
+
+    try {
+      await client.request("command/exec", {
+        command: interactiveShellArgv(),
+        processId,
+        tty: true,
+        streamStdin: true,
+        streamStdoutStderr: true,
+      }, 0);
+    } catch (reason) {
+      setTerminalRunning(false);
+      setError(String(reason));
+    }
+  }
+
+  async function writeTerminalInput(): Promise<void> {
+    const text = terminalInput;
+    if (!text || !terminalProcessId) return;
+    setTerminalInput("");
+    setTerminalOutput((current) => `${current}${text}\n`);
+    try {
+      await client.request("command/exec/write", {
+        processId: terminalProcessId,
+        deltaBase64: bytesToBase64(`${text}\n`),
+        closeStdin: false,
+      });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function stopTerminal(): Promise<void> {
+    if (!terminalProcessId) return;
+    try {
+      await client.request("command/exec/terminate", {
+        processId: terminalProcessId,
+      });
+    } catch {
+      // The process may already have exited.
+    }
+    setTerminalRunning(false);
+    setTerminalProcessId(null);
+  }
+
   function handleNotification(method: string, params: unknown): void {
     const record = asRecord(params);
     const threadId = typeof record.threadId === "string" ? record.threadId : "";
@@ -212,6 +292,12 @@ function App() {
             text: `${current?.text ?? ""}${record.delta}`,
             label: "command output",
           }));
+        }
+        break;
+
+      case "command/exec/outputDelta":
+        if (record.processId === terminalProcessId && typeof record.deltaBase64 === "string") {
+          setTerminalOutput((current) => current + base64ToString(record.deltaBase64));
         }
         break;
 
@@ -331,7 +417,7 @@ function App() {
         name: "workx-desktop",
         version: "0.1.0",
       },
-      capabilities: {},
+      capabilities: { experimentalApi: true },
     });
     await client.notify("initialized");
 
@@ -512,6 +598,7 @@ function App() {
             <button onClick={() => setRightTab("approvals")}>
               Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
             </button>
+            <button onClick={() => void startTerminal()}>Terminal</button>
           </div>
         </header>
 
@@ -579,6 +666,9 @@ function App() {
               <button className={rightTab === "approvals" ? "active" : ""} onClick={() => setRightTab("approvals")}>
                 Approvals
               </button>
+              <button className={rightTab === "terminal" ? "active" : ""} onClick={() => void startTerminal()}>
+                Terminal
+              </button>
               <button className={rightTab === "status" ? "active" : ""} onClick={() => setRightTab("status")}>
                 Status
               </button>
@@ -628,6 +718,34 @@ function App() {
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : rightTab === "terminal" ? (
+              <div className="terminal-pane">
+                <div className="terminal-toolbar">
+                  <span className={terminalRunning ? "status-dot online" : "status-dot"} />
+                  <span>{terminalRunning ? terminalProcessId : "terminal stopped"}</span>
+                  <button onClick={() => void stopTerminal()} disabled={!terminalRunning}>
+                    Stop
+                  </button>
+                </div>
+                <pre className="terminal-output">{terminalOutput || "Terminal ready. Type a command."}</pre>
+                <form
+                  className="terminal-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void writeTerminalInput();
+                  }}
+                >
+                  <input
+                    value={terminalInput}
+                    onChange={(event) => setTerminalInput(event.currentTarget.value)}
+                    disabled={!terminalRunning}
+                    placeholder={terminalRunning ? "$ command" : "Start a terminal first"}
+                  />
+                  <button type="submit" disabled={!terminalRunning || !terminalInput.trim()}>
+                    Run
+                  </button>
+                </form>
               </div>
             ) : rightTab === "events" ? (
               <div className="event-list">

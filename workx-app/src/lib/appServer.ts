@@ -31,7 +31,7 @@ export interface AppServerStatus {
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | undefined;
 }
 
 export class AppServerClient {
@@ -69,10 +69,13 @@ export class AppServerClient {
     };
 
     return new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Request ${method} timed out`));
-      }, timeoutMs);
+      const timeout =
+        timeoutMs <= 0
+          ? undefined
+          : setTimeout(() => {
+              this.pending.delete(id);
+              reject(new Error(`Request ${method} timed out`));
+            }, timeoutMs);
 
       this.pending.set(id, {
         resolve: (value) => resolve(value as T),
@@ -83,7 +86,7 @@ export class AppServerClient {
       invoke("app_server_write", {
         payload: JSON.stringify(message),
       }).catch((error) => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         this.pending.delete(id);
         reject(new Error(String(error)));
       });
@@ -181,7 +184,7 @@ export class AppServerClient {
 
   private rejectAll(error: Error): void {
     for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timeout);
+      if (pending.timeout) clearTimeout(pending.timeout);
       pending.reject(error);
       this.pending.delete(id);
     }
