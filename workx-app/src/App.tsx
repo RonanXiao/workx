@@ -79,6 +79,20 @@ interface ModelListResponse {
   data: ModelOption[];
 }
 
+interface FsEntry {
+  fileName: string;
+  isDirectory: boolean;
+  isFile: boolean;
+}
+
+interface FsReadDirectoryResponse {
+  entries: FsEntry[];
+}
+
+interface FsReadFileResponse {
+  dataBase64: string;
+}
+
 type MessageRole = "user" | "assistant" | "tool" | "system" | "error";
 type MessageStatus = "streaming" | "done" | "error";
 
@@ -140,6 +154,15 @@ function base64ToString(value: string): string {
   } catch {
     return value;
   }
+}
+
+function parentDirectoryPath(path: string): string {
+  const normalized = path.replace(/[\/]+$/, "");
+  const separator = normalized.lastIndexOf("/");
+  if (separator > 0) return normalized.slice(0, separator);
+  const backslash = normalized.lastIndexOf("\\");
+  if (backslash > 0) return normalized.slice(0, backslash);
+  return normalized;
 }
 
 function interactiveShellArgv(): string[] {
@@ -262,12 +285,16 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "status">("events");
+  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "status">("events");
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [terminalProcessId, setTerminalProcessId] = useState<string | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalRunning, setTerminalRunning] = useState(false);
+  const [currentDir, setCurrentDir] = useState<string | null>(null);
+  const [directoryEntries, setDirectoryEntries] = useState<FsEntry[]>([]);
+  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
   const eventId = useRef(0);
 
   const visibleMessages = useMemo(
@@ -379,6 +406,33 @@ function App() {
     }
     setTerminalRunning(false);
     setTerminalProcessId(null);
+  }
+
+  async function loadDirectory(path: string): Promise<void> {
+    setFilesLoading(true);
+    setError(null);
+    try {
+      const response = await client.request<FsReadDirectoryResponse>("fs/readDirectory", { path });
+      setCurrentDir(path);
+      setDirectoryEntries(response.entries.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.fileName.localeCompare(b.fileName);
+      }));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setFilesLoading(false);
+    }
+  }
+
+  async function openFile(path: string): Promise<void> {
+    setError(null);
+    try {
+      const response = await client.request<FsReadFileResponse>("fs/readFile", { path });
+      setSelectedFile({ path, content: base64ToString(response.dataBase64) });
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   function handleNotification(method: string, params: unknown): void {
@@ -570,6 +624,7 @@ function App() {
     setThreads(list.data);
     if (list.data.length > 0 && !activeThread) {
       setActiveThread(list.data[0]);
+      setCurrentDir(list.data[0].cwd ?? null);
     }
 
     const modelList = await client.request<ModelListResponse>("model/list", { limit: 100 });
@@ -650,6 +705,7 @@ function App() {
         ...(selectedModel ? { model: selectedModel } : {}),
       });
       setActiveThread(response.thread);
+      setCurrentDir(response.thread.cwd ?? null);
       setThreads((current) =>
         current.map((item) => (item.id === response.thread.id ? response.thread : item)),
       );
@@ -675,6 +731,7 @@ function App() {
         ...(selectedModel ? { model: selectedModel } : {}),
       });
       setActiveThread(response.thread);
+      setCurrentDir(response.thread.cwd ?? null);
       setThreads((current) => [
         response.thread,
         ...current.filter((thread) => thread.id !== response.thread.id),
@@ -692,6 +749,7 @@ function App() {
         ...(selectedModel ? { model: selectedModel } : {}),
       });
       setActiveThread(response.thread);
+      setCurrentDir(response.thread.cwd ?? null);
       setThreads((current) => [
         response.thread,
         ...current.filter((thread) => thread.id !== response.thread.id),
@@ -890,6 +948,15 @@ function App() {
               <button className={rightTab === "terminal" ? "active" : ""} onClick={() => void startTerminal()}>
                 Terminal
               </button>
+              <button
+                className={rightTab === "files" ? "active" : ""}
+                onClick={() => {
+                  setRightTab("files");
+                  if (currentDir) void loadDirectory(currentDir);
+                }}
+              >
+                Files
+              </button>
               <button className={rightTab === "status" ? "active" : ""} onClick={() => setRightTab("status")}>
                 Status
               </button>
@@ -939,6 +1006,51 @@ function App() {
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : rightTab === "files" ? (
+              <div className="files-pane">
+                <div className="files-toolbar">
+                  <button
+                    onClick={() => {
+                      if (currentDir) void loadDirectory(parentDirectoryPath(currentDir));
+                    }}
+                    disabled={!currentDir || filesLoading}
+                  >
+                    Up
+                  </button>
+                  <span className="muted">{currentDir || "No folder open"}</span>
+                </div>
+                <div className="file-list">
+                  {filesLoading && <div className="muted">Loading…</div>}
+                  {!filesLoading &&
+                    directoryEntries.map((entry) => (
+                      <button
+                        key={entry.fileName}
+                        className="file-item"
+                        onClick={() => {
+                          if (!currentDir) return;
+                          const path = `${currentDir.replace(/[\/]+$/, "")}/${entry.fileName}`;
+                          if (entry.isDirectory) {
+                            void loadDirectory(path);
+                          } else {
+                            void openFile(path);
+                          }
+                        }}
+                      >
+                        <span>{entry.isDirectory ? "📁" : "📄"}</span>
+                        <span>{entry.fileName}</span>
+                      </button>
+                    ))}
+                </div>
+                {selectedFile && (
+                  <div className="file-preview">
+                    <div className="file-preview-head">
+                      <strong>{selectedFile.path}</strong>
+                      <button onClick={() => setSelectedFile(null)}>Close</button>
+                    </div>
+                    <pre>{selectedFile.content}</pre>
+                  </div>
+                )}
               </div>
             ) : rightTab === "terminal" ? (
               <div className="terminal-pane">

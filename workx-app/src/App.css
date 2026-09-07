@@ -424,3 +424,66 @@ pre {
   border-radius: 8px;
   padding: 7px 8px;
 }
+
+.files-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px;
+  gap: 10px;
+}
+
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.files-toolbar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.file-item {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+}
+
+.file-preview {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.file-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.file-preview pre {
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
