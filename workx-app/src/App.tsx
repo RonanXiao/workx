@@ -13,7 +13,7 @@ interface Thread {
   name?: string | null;
   preview?: string;
   updatedAt?: number;
-  status?: string;
+  status?: unknown;
   cwd?: string;
   source?: string;
   turns?: TurnHistory[];
@@ -140,6 +140,15 @@ function prettyJson(value: unknown): string {
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatThreadStatus(status: unknown): string {
+  if (typeof status === "string") return status;
+  if (status && typeof status === "object") {
+    const record = status as Record<string, unknown>;
+    return typeof record.type === "string" ? record.type : "idle";
+  }
+  return "idle";
 }
 
 function bytesToBase64(value: string): string {
@@ -287,6 +296,10 @@ function App() {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [selectedEffort, setSelectedEffort] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const stored = localStorage.getItem("workx-theme");
+    return stored === "light" ? "light" : "dark";
+  });
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
@@ -661,6 +674,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("workx-theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
     return client.onMessage((message: JsonRpcResponse) => {
       if (message.error) {
         pushEvent("error", `app-server: ${message.error.message}`, prettyJson(message.error.data));
@@ -847,7 +865,7 @@ function App() {
             >
               <span className="thread-title">{thread.name || thread.preview || "Untitled"}</span>
               <span className="thread-meta">
-                {thread.status ?? "idle"} · {thread.cwd || "no cwd"}
+                {formatThreadStatus(thread.status)} · {thread.cwd || "no cwd"}
               </span>
             </button>
           ))}
@@ -863,6 +881,13 @@ function App() {
         <header className="topbar">
           <div className="topbar-title">{activeTitle}</div>
           <div className="topbar-actions">
+            <button
+              className="theme-toggle"
+              title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
             <select
               className="model-picker"
               value={selectedModel ?? ""}

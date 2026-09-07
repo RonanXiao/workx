@@ -8,6 +8,35 @@
   --text: #f3f4f6;
   --muted: #8b93a5;
   --accent: #7dd3fc;
+  --msg-assistant: #141820;
+  --msg-user: #17202b;
+  --msg-tool: #171d16;
+  --terminal-bg: #05070a;
+  --terminal-text: #d1fae5;
+  --approval-bg: #1a1710;
+  --approval-border: #7f6d1d;
+  --connection-bg: #2a1215;
+  --link-color: #7dd3fc;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f5f6f8;
+  --surface-2: #e9ecf1;
+  --border: #d0d4dd;
+  --text: #1a1a1a;
+  --muted: #5f6672;
+  --accent: #2563eb;
+  --msg-assistant: #ffffff;
+  --msg-user: #f3f6fb;
+  --msg-tool: #f4f6f8;
+  --terminal-bg: #ffffff;
+  --terminal-text: #1a1a1a;
+  --approval-bg: #fff8e6;
+  --approval-border: #e6b84c;
+  --connection-bg: #fde7e7;
+  --link-color: #2563eb;
 }
 
 * {
@@ -271,9 +300,9 @@ pre {
 }
 
 .error-banner {
-  border: 1px solid #7f1d1d;
-  color: #fecaca;
-  background: #2a1215;
+  border: 1px solid #ef4444;
+  color: #7f1d1d;
+  background: var(--connection-bg);
   border-radius: 8px;
   padding: 10px;
   margin-bottom: 16px;
@@ -299,19 +328,19 @@ pre {
 }
 
 .message.assistant {
-  background: #141820;
+  background: var(--msg-assistant);
 }
 
 .message.user {
-  background: #17202b;
+  background: var(--msg-user);
 }
 
 .message.tool {
-  background: #171d16;
+  background: var(--msg-tool);
 }
 
 .message.error {
-  border-color: #7f1d1d;
+  border-color: #ef4444;
 }
 
 .message-head {
@@ -346,11 +375,11 @@ pre {
 }
 
 .approval-card {
-  border: 1px solid #7f6d1d;
+  border: 1px solid var(--approval-border);
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 10px;
-  background: #1a1710;
+  background: var(--approval-bg);
 }
 
 .approval-head {
@@ -393,11 +422,11 @@ pre {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #05070a;
+  background: var(--terminal-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
-  color: #d1fae5;
+  color: var(--terminal-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
@@ -415,6 +444,11 @@ pre {
   border-radius: 8px;
   padding: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.theme-toggle {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .model-picker {
