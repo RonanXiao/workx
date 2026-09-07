@@ -130,6 +130,7 @@ function App() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [input, setInput] = useState("");
+  const [threadSearch, setThreadSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
@@ -146,6 +147,15 @@ function App() {
     () => messages.filter((message) => message.threadId === activeThread?.id),
     [activeThread?.id, messages],
   );
+
+  const visibleThreads = useMemo(() => {
+    const term = threadSearch.trim().toLowerCase();
+    if (!term) return threads;
+    return threads.filter((thread) => {
+      const title = thread.name || thread.preview || "Untitled";
+      return title.toLowerCase().includes(term) || thread.id.toLowerCase().includes(term);
+    });
+  }, [threadSearch, threads]);
 
   function pushEvent(
     kind: EventKind,
@@ -581,13 +591,19 @@ function App() {
           <button className="new-chat" onClick={startNewThread} disabled={booting}>
             + New chat
           </button>
-          <input className="search" placeholder="Search threads" disabled={booting} />
+          <input
+            className="search"
+            placeholder="Search threads"
+            disabled={booting}
+            value={threadSearch}
+            onChange={(event) => setThreadSearch(event.currentTarget.value)}
+          />
         </div>
 
         <div className="thread-list">
           {booting && <div className="muted">Starting Workx…</div>}
           {!booting && threads.length === 0 && <div className="muted">No threads yet</div>}
-          {threads.map((thread) => (
+          {visibleThreads.map((thread) => (
             <button
               key={thread.id}
               className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
