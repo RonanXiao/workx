@@ -15,6 +15,23 @@ interface Thread {
   status?: string;
   cwd?: string;
   source?: string;
+  turns?: TurnHistory[];
+}
+
+interface TurnHistory {
+  id: string;
+  status?: string;
+  items?: ThreadItemRecord[];
+}
+
+interface ThreadItemRecord {
+  type: string;
+  id?: string;
+  text?: string;
+  command?: string;
+  aggregatedOutput?: string;
+  content?: Array<{ type?: string; text?: string; url?: string }>;
+  summary?: string[];
 }
 
 interface ThreadListResponse {
@@ -120,6 +137,102 @@ function interactiveShellArgv(): string[] {
 
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
+}
+
+function contentText(content: ThreadItemRecord["content"] | undefined): string {
+  if (!content) return "";
+  return content
+    .map((part) => part.text || part.url || "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+function historyMessages(threadId: string, turns: TurnHistory[]): ConversationMessage[] {
+  const result: ConversationMessage[] = [];
+
+  for (const turn of turns) {
+    for (const item of turn.items ?? []) {
+      const id = item.id ?? `${turn.id}:${item.type}`;
+      switch (item.type) {
+        case "userMessage":
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "user",
+            status: "done",
+            text: contentText(item.content) || "(message)",
+          });
+          break;
+        case "agentMessage":
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "assistant",
+            status: "done",
+            text: item.text || "",
+          });
+          break;
+        case "reasoning":
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "system",
+            status: "done",
+            text: (item.summary ?? []).join("\n"),
+            label: "reasoning",
+          });
+          break;
+        case "commandExecution":
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "tool",
+            status: "done",
+            text: [item.command, item.aggregatedOutput].filter(Boolean).join("\n"),
+            label: "command",
+          });
+          break;
+        case "plan":
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "system",
+            status: "done",
+            text: item.text || "",
+            label: "plan",
+          });
+          break;
+        case "fileChange":
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "tool",
+            status: "done",
+            text: "",
+            label: "file change",
+          });
+          break;
+        default:
+          result.push({
+            id: `history:${id}`,
+            threadId,
+            turnId: turn.id,
+            role: "tool",
+            status: "done",
+            text: item.text || "",
+            label: item.type,
+          });
+      }
+    }
+  }
+
+  return result;
 }
 
 function App() {
@@ -511,12 +624,15 @@ function App() {
     try {
       const response = await client.request<ThreadResumeResponse>("thread/resume", {
         threadId: thread.id,
-        excludeTurns: true,
       });
       setActiveThread(response.thread);
       setThreads((current) =>
         current.map((item) => (item.id === response.thread.id ? response.thread : item)),
       );
+      setMessages((current) => [
+        ...current.filter((message) => message.threadId !== thread.id),
+        ...historyMessages(thread.id, response.thread.turns ?? []),
+      ]);
       pushEvent("system", "thread/resume", thread.id);
     } catch (reason) {
       setError(String(reason));
