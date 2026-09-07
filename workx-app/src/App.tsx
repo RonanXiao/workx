@@ -73,6 +73,11 @@ interface ModelOption {
   model: string;
   displayName: string;
   isDefault: boolean;
+  defaultReasoningEffort?: string;
+  supportedReasoningEfforts?: Array<{
+    reasoningEffort?: string;
+    description?: string;
+  }>;
 }
 
 interface ModelListResponse {
@@ -281,6 +286,7 @@ function App() {
   const [threadSearch, setThreadSearch] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [selectedEffort, setSelectedEffort] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
@@ -629,11 +635,12 @@ function App() {
 
     const modelList = await client.request<ModelListResponse>("model/list", { limit: 100 });
     setModels(modelList.data);
-    setSelectedModel((current) =>
-      current ??
-      modelList.data.find((model) => model.isDefault)?.model ??
-      modelList.data[0]?.model ??
-      null,
+    const defaultModel =
+      modelList.data.find((model) => model.isDefault) ??
+      modelList.data[0];
+    setSelectedModel((current) => current ?? defaultModel?.model ?? null);
+    setSelectedEffort((current) =>
+      current ?? defaultModel?.defaultReasoningEffort ?? null,
     );
   }
 
@@ -796,6 +803,7 @@ function App() {
         threadId: thread.id,
         input: [{ type: "text", text }],
         ...(selectedModel ? { model: selectedModel } : {}),
+        ...(selectedEffort ? { effort: selectedEffort } : {}),
       });
 
       setActiveTurnId(response.turn.id);
@@ -858,7 +866,11 @@ function App() {
             <select
               className="model-picker"
               value={selectedModel ?? ""}
-              onChange={(event) => setSelectedModel(event.currentTarget.value || null)}
+              onChange={(event) => {
+                const model = models.find((item) => item.model === event.currentTarget.value);
+                setSelectedModel(event.currentTarget.value || null);
+                setSelectedEffort(model?.defaultReasoningEffort ?? null);
+              }}
               disabled={booting || models.length === 0}
             >
               {models.length === 0 && <option value="">Loading models…</option>}
@@ -867,6 +879,21 @@ function App() {
                   {model.displayName || model.model}
                 </option>
               ))}
+            </select>
+            <select
+              className="model-picker"
+              value={selectedEffort ?? ""}
+              onChange={(event) => setSelectedEffort(event.currentTarget.value || null)}
+              disabled={booting || models.length === 0}
+            >
+              <option value="">Default effort</option>
+              {(models.find((model) => model.model === selectedModel)?.supportedReasoningEfforts ?? []).map(
+                (option) => (
+                  <option key={option.reasoningEffort ?? "default"} value={option.reasoningEffort ?? ""}>
+                    {option.reasoningEffort || "default"}
+                  </option>
+                ),
+              )}
             </select>
             <button onClick={startNewThread} disabled={booting}>New</button>
             <button onClick={() => setRightTab("approvals")}>
