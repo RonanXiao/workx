@@ -133,6 +133,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "status">("events");
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [terminalProcessId, setTerminalProcessId] = useState<string | null>(null);
@@ -360,6 +361,7 @@ function App() {
                 : message,
             ),
           );
+          setActiveTurnId((current) => (current === turnId ? null : current));
         }
         break;
 
@@ -479,6 +481,20 @@ function App() {
     });
   }, [client]);
 
+  async function interruptTurn(): Promise<void> {
+    if (!activeThread || !activeTurnId) return;
+    try {
+      await client.request("turn/interrupt", {
+        threadId: activeThread.id,
+        turnId: activeTurnId,
+      });
+      setActiveTurnId(null);
+      pushEvent("system", "turn/interrupt", activeTurnId);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   async function selectThread(thread: Thread): Promise<void> {
     setActiveThread(thread);
     setError(null);
@@ -547,6 +563,7 @@ function App() {
         input: [{ type: "text", text }],
       });
 
+      setActiveTurnId(response.turn.id);
       pushEvent("system", "turn/start", response.turn.id);
     } catch (reason) {
       setError(String(reason));
@@ -599,6 +616,11 @@ function App() {
               Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
             </button>
             <button onClick={() => void startTerminal()}>Terminal</button>
+            {activeTurnId && (
+              <button onClick={() => void interruptTurn()} disabled={sending}>
+                Stop
+              </button>
+            )}
           </div>
         </header>
 
