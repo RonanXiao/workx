@@ -298,8 +298,12 @@ function App() {
   const [selectedEffort, setSelectedEffort] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const stored = localStorage.getItem("workx-theme");
-    return stored === "light" ? "light" : "dark";
+    return stored === "dark" ? "dark" : "light";
   });
+  const [selectedProvider, setSelectedProvider] = useState<string>(() => localStorage.getItem("workx-provider") || "openai");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+  const [mode, setMode] = useState<"chat" | "work">("chat");
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
@@ -728,6 +732,7 @@ function App() {
       const response = await client.request<ThreadResumeResponse>("thread/resume", {
         threadId: thread.id,
         ...(selectedModel ? { model: selectedModel } : {}),
+        ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
       });
       setActiveThread(response.thread);
       setCurrentDir(response.thread.cwd ?? null);
@@ -754,6 +759,7 @@ function App() {
       const response = await client.request<ThreadStartResponse>("thread/start", {
         cwd,
         ...(selectedModel ? { model: selectedModel } : {}),
+        ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
       });
       setActiveThread(response.thread);
       setCurrentDir(response.thread.cwd ?? null);
@@ -772,6 +778,7 @@ function App() {
     try {
       const response = await client.request<ThreadStartResponse>("thread/start", {
         ...(selectedModel ? { model: selectedModel } : {}),
+        ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
       });
       setActiveThread(response.thread);
       setCurrentDir(response.thread.cwd ?? null);
@@ -799,6 +806,7 @@ function App() {
       if (!thread) {
         const startResponse = await client.request<ThreadStartResponse>("thread/start", {
           ...(selectedModel ? { model: selectedModel } : {}),
+          ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
         });
         thread = startResponse.thread;
         setActiveThread(thread);
@@ -833,18 +841,51 @@ function App() {
     }
   }
 
+  function saveSettings(): void {
+    localStorage.setItem("workx-provider", selectedProvider);
+    setSettingsOpen(false);
+    pushEvent("system", "settings saved", `${selectedProvider} / ${selectedModel ?? ""}`);
+  }
+
+  function openRight(tab: typeof rightTab): void {
+    setRightTab(tab);
+    setRightOpen(true);
+  }
+
   const activeTitle = activeThread?.name || activeThread?.preview || "New Workx chat";
 
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <button className="new-chat" onClick={startNewThread} disabled={booting}>
-            + New chat
+        <div className="sidebar-top">
+          <button className="sidebar-collapse" title="Collapse sidebar">◀</button>
+          <h1 className="brand">Workx</h1>
+        </div>
+
+        <nav className="sidebar-nav">
+          <button className="nav-item" onClick={startNewThread} disabled={booting}>
+            <span className="nav-icon">✏️</span> New chat
           </button>
-          <button onClick={() => void openFolder()} disabled={booting}>
-            Open Folder
+          <button className="nav-item" onClick={() => openRight("files")} disabled={booting}>
+            <span className="nav-icon">📁</span> Plugins
           </button>
+          <button className="nav-item" onClick={() => openRight("events")}>
+            <span className="nav-icon">🕐</span> Scheduled
+          </button>
+        </nav>
+
+        <div className="sidebar-section">
+          <div className="sidebar-section-title">Projects</div>
+          <button className="section-item" onClick={() => void openFolder()} disabled={booting}>
+            <span className="nav-icon">📁</span> Codex
+          </button>
+        </div>
+
+        <div className="sidebar-section chats">
+          <div className="sidebar-section-title">
+            <span>Chats</span>
+            <button className="new-chat-small" onClick={startNewThread} disabled={booting}>＋</button>
+          </div>
           <input
             className="search"
             placeholder="Search threads"
@@ -852,107 +893,84 @@ function App() {
             value={threadSearch}
             onChange={(event) => setThreadSearch(event.currentTarget.value)}
           />
+          <div className="thread-list">
+            {booting && <div className="muted">Starting Workx…</div>}
+            {!booting && threads.length === 0 && <div className="muted">No threads yet</div>}
+            {visibleThreads.map((thread) => (
+              <button
+                key={thread.id}
+                className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
+                onClick={() => void selectThread(thread)}
+              >
+                <span className="thread-title">{thread.name || thread.preview || "Untitled"}</span>
+                <span className="thread-meta">
+                  {formatThreadStatus(thread.status)} · {thread.cwd || "no cwd"}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="thread-list">
-          {booting && <div className="muted">Starting Workx…</div>}
-          {!booting && threads.length === 0 && <div className="muted">No threads yet</div>}
-          {visibleThreads.map((thread) => (
-            <button
-              key={thread.id}
-              className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
-              onClick={() => void selectThread(thread)}
-            >
-              <span className="thread-title">{thread.name || thread.preview || "Untitled"}</span>
-              <span className="thread-meta">
-                {formatThreadStatus(thread.status)} · {thread.cwd || "no cwd"}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="sidebar-footer">
+        <div className="sidebar-bottom">
+          <button
+            className="settings-button"
+            title="Settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙️
+          </button>
+          <span className="muted">{theme === "dark" ? "Dark" : "Light"}</span>
           <div className={`status-dot ${status.running ? "online" : "offline"}`} />
-          <span className="muted">{status.running ? "app-server connected" : "app-server offline"}</span>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div className="topbar-title">{activeTitle}</div>
-          <div className="topbar-actions">
+          <div className="topbar-right">
+            <div className="mode-pill">
+              <button className={mode === "chat" ? "active" : ""} onClick={() => setMode("chat")}>
+                Chat
+              </button>
+              <button className={mode === "work" ? "active" : ""} onClick={() => setMode("work")}>
+                Work
+              </button>
+            </div>
             <button
-              className="theme-toggle"
+              className="icon-button"
               title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
               {theme === "dark" ? "☀️" : "🌙"}
             </button>
-            <select
-              className="model-picker"
-              value={selectedModel ?? ""}
-              onChange={(event) => {
-                const model = models.find((item) => item.model === event.currentTarget.value);
-                setSelectedModel(event.currentTarget.value || null);
-                setSelectedEffort(model?.defaultReasoningEffort ?? null);
-              }}
-              disabled={booting || models.length === 0}
-            >
-              {models.length === 0 && <option value="">Loading models…</option>}
-              {models.map((model) => (
-                <option key={model.id} value={model.model}>
-                  {model.displayName || model.model}
-                </option>
-              ))}
-            </select>
-            <select
-              className="model-picker"
-              value={selectedEffort ?? ""}
-              onChange={(event) => setSelectedEffort(event.currentTarget.value || null)}
-              disabled={booting || models.length === 0}
-            >
-              <option value="">Default effort</option>
-              {(models.find((model) => model.model === selectedModel)?.supportedReasoningEfforts ?? []).map(
-                (option) => (
-                  <option key={option.reasoningEffort ?? "default"} value={option.reasoningEffort ?? ""}>
-                    {option.reasoningEffort || "default"}
-                  </option>
-                ),
-              )}
-            </select>
-            <button onClick={startNewThread} disabled={booting}>New</button>
-            <button onClick={() => setRightTab("approvals")}>
+            {activeTurnId && (
+              <button className="icon-button" onClick={() => void interruptTurn()}>Stop</button>
+            )}
+            <button className="icon-button" onClick={() => openRight("events")}>Events</button>
+            <button className="icon-button" onClick={() => openRight("approvals")}>
               Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
             </button>
-            <button onClick={() => void startTerminal()}>Terminal</button>
-            {activeTurnId && (
-              <button onClick={() => void interruptTurn()} disabled={sending}>
-                Stop
-              </button>
-            )}
+            <button className="icon-button" onClick={() => openRight("terminal")}>Term</button>
+            <button className="icon-button" onClick={() => openRight("files")}>Files</button>
           </div>
         </header>
 
-        <div className="content">
+        <div className={rightOpen ? "content with-right" : "content"}>
           <div className="chat-pane">
             <div className="chat-body">
               {error && <div className="error-banner">{error}</div>}
               {visibleMessages.length === 0 ? (
-                activeThread ? (
-                  <div className="thread-summary">
-                    <h1>{activeTitle}</h1>
+                <div className="thread-hero">
+                  <div className="hero-logo">W</div>
+                  <p className="hero-title">
+                    {activeThread ? activeTitle : "What should we get done?"}
+                  </p>
+                  {activeThread && (
                     <p className="muted">
                       Thread {activeThread.id} · source {activeThread.source ?? "unknown"}
                     </p>
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <h1>Workx Desktop</h1>
-                    <p className="muted">
-                      Start a chat to inspect, edit, and run code in this workspace.
-                    </p>
-                  </div>
-                )
+                  )}
+                </div>
               ) : (
                 <div className="message-list">
                   {visibleMessages.map((message) => (
@@ -969,200 +987,265 @@ function App() {
               )}
             </div>
 
-            <form className="composer" onSubmit={sendMessage}>
-              <textarea
-                value={input}
-                onChange={(event) => setInput(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendMessage();
-                  }
-                }}
-                placeholder="Ask Workx to do something…"
-                rows={3}
-                disabled={booting || sending}
-              />
-              <button type="submit" disabled={booting || sending || !input.trim()}>
-                {sending ? "Sending…" : "Send"}
+            <div className="composer-stack">
+              <button className="choose-project" onClick={() => void openFolder()} disabled={booting}>
+                📁 Choose project
               </button>
-            </form>
+              <form className="composer" onSubmit={sendMessage}>
+                <button type="button" className="composer-plus" title="Attach a file" disabled={booting || sending}>
+                  ＋
+                </button>
+                <textarea
+                  value={input}
+                  onChange={(event) => setInput(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendMessage();
+                    }
+                  }}
+                  placeholder="Send a message…"
+                  rows={1}
+                  disabled={booting || sending}
+                />
+                <button type="button" className="composer-approve" title="Ask for approval">
+                  🧭 Ask for approval
+                </button>
+                <select
+                  className="composer-model"
+                  value={selectedModel ?? ""}
+                  onChange={(event) => {
+                    const model = models.find((item) => item.model === event.currentTarget.value);
+                    setSelectedModel(event.currentTarget.value || null);
+                    setSelectedEffort(model?.defaultReasoningEffort ?? null);
+                  }}
+                  disabled={booting || models.length === 0}
+                >
+                  {models.length === 0 && <option value="">Loading models…</option>}
+                  {models.map((model) => (
+                    <option key={model.id} value={model.model}>
+                      {model.displayName || model.model}
+                    </option>
+                  ))}
+                </select>
+                <button className="composer-send" type="submit" disabled={booting || sending || !input.trim()}>
+                  {sending ? "…" : "↑"}
+                </button>
+              </form>
+            </div>
           </div>
 
-          <aside className="right-pane">
-            <div className="right-tabs">
-              <button className={rightTab === "events" ? "active" : ""} onClick={() => setRightTab("events")}>
-                Events
-              </button>
-              <button className={rightTab === "approvals" ? "active" : ""} onClick={() => setRightTab("approvals")}>
-                Approvals
-              </button>
-              <button className={rightTab === "terminal" ? "active" : ""} onClick={() => void startTerminal()}>
-                Terminal
-              </button>
-              <button
-                className={rightTab === "files" ? "active" : ""}
-                onClick={() => {
-                  setRightTab("files");
-                  if (currentDir) void loadDirectory(currentDir);
-                }}
-              >
-                Files
-              </button>
-              <button className={rightTab === "status" ? "active" : ""} onClick={() => setRightTab("status")}>
-                Status
-              </button>
-            </div>
-
-            {rightTab === "approvals" ? (
-              <div className="approval-list">
-                {approvals.length === 0 && <div className="muted">No pending approvals</div>}
-                {approvals.map((approval) => (
-                  <div key={String(approval.id)} className="approval-card">
-                    <div className="approval-head">
-                      <span>{approval.time}</span>
-                      <strong>{approval.method}</strong>
-                    </div>
-                    {approval.params.command && <pre>{approval.params.command}</pre>}
-                    {approval.params.reason && <p className="muted">{approval.params.reason}</p>}
-                    {!approval.params.command && !approval.params.reason && (
-                      <pre>{prettyJson(approval.params)}</pre>
-                    )}
-                    <div className="approval-actions">
-                      {approval.method === "item/commandExecution/requestApproval" && (
-                        <>
-                          <button onClick={() => void resolveApproval(approval, { decision: "accept" })}>
-                            Accept
-                          </button>
-                          <button onClick={() => void resolveApproval(approval, { decision: "acceptForSession" })}>
-                            Accept session
-                          </button>
-                        </>
-                      )}
-                      {approval.method === "item/fileChange/requestApproval" && (
-                        <>
-                          <button onClick={() => void resolveApproval(approval, { decision: "accept" })}>
-                            Accept
-                          </button>
-                          <button onClick={() => void resolveApproval(approval, { decision: "acceptForSession" })}>
-                            Accept session
-                          </button>
-                        </>
-                      )}
-                      <button onClick={() => void resolveApproval(approval, { decision: "decline" })}>
-                        Decline
-                      </button>
-                      <button onClick={() => void resolveApproval(approval, { decision: "cancel" })}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ))}
+          {rightOpen && (
+            <aside className="right-pane">
+              <div className="right-pane-header">
+                <span className="right-pane-title">{rightTab}</span>
+                <button className="icon-button" onClick={() => setRightOpen(false)}>×</button>
               </div>
-            ) : rightTab === "files" ? (
-              <div className="files-pane">
-                <div className="files-toolbar">
-                  <button
-                    onClick={() => {
-                      if (currentDir) void loadDirectory(parentDirectoryPath(currentDir));
-                    }}
-                    disabled={!currentDir || filesLoading}
-                  >
-                    Up
-                  </button>
-                  <span className="muted">{currentDir || "No folder open"}</span>
+              {rightTab === "events" && (
+                <div className="event-list">
+                  {events.length === 0 && <div className="muted">Waiting for app-server events…</div>}
+                  {events.map((item) => (
+                    <div key={item.id} className={`event-item ${item.kind}`}>
+                      <div className="event-head">
+                        <span>{item.time}</span>
+                        <strong>{item.title}</strong>
+                      </div>
+                      {item.detail && <pre>{item.detail}</pre>}
+                    </div>
+                  ))}
                 </div>
-                <div className="file-list">
-                  {filesLoading && <div className="muted">Loading…</div>}
-                  {!filesLoading &&
-                    directoryEntries.map((entry) => (
+              )}
+              {rightTab === "approvals" && (
+                <div className="approval-list">
+                  {approvals.length === 0 && <div className="muted">No pending approvals</div>}
+                  {approvals.map((approval) => (
+                    <div key={String(approval.id)} className="approval-card">
+                      <div className="approval-head">
+                        <span>{approval.time}</span>
+                        <strong>{approval.method}</strong>
+                      </div>
+                      {approval.params.command && <pre>{approval.params.command}</pre>}
+                      {approval.params.reason && <p className="muted">{approval.params.reason}</p>}
+                      {!approval.params.command && !approval.params.reason && <pre>{prettyJson(approval.params)}</pre>}
+                      <div className="approval-actions">
+                        {approval.method === "item/commandExecution/requestApproval" && (
+                          <>
+                            <button onClick={() => void resolveApproval(approval, { decision: "accept" })}>Accept</button>
+                            <button onClick={() => void resolveApproval(approval, { decision: "acceptForSession" })}>Accept session</button>
+                          </>
+                        )}
+                        {approval.method === "item/fileChange/requestApproval" && (
+                          <>
+                            <button onClick={() => void resolveApproval(approval, { decision: "accept" })}>Accept</button>
+                            <button onClick={() => void resolveApproval(approval, { decision: "acceptForSession" })}>Accept session</button>
+                          </>
+                        )}
+                        <button onClick={() => void resolveApproval(approval, { decision: "decline" })}>Decline</button>
+                        <button onClick={() => void resolveApproval(approval, { decision: "cancel" })}>Cancel</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {rightTab === "terminal" && (
+                <div className="terminal-pane">
+                  <div className="terminal-toolbar">
+                    <span className={terminalRunning ? "status-dot online" : "status-dot"} />
+                    <span>{terminalRunning ? terminalProcessId : "terminal stopped"}</span>
+                    <button onClick={() => void startTerminal()}>Start</button>
+                    <button onClick={() => void stopTerminal()} disabled={!terminalRunning}>Stop</button>
+                  </div>
+                  <pre className="terminal-output">{terminalOutput || "Terminal ready. Type a command."}</pre>
+                  <form
+                    className="terminal-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void writeTerminalInput();
+                    }}
+                  >
+                    <input
+                      value={terminalInput}
+                      onChange={(event) => setTerminalInput(event.currentTarget.value)}
+                      disabled={!terminalRunning}
+                      placeholder={terminalRunning ? "$ command" : "Start a terminal first"}
+                    />
+                    <button type="submit" disabled={!terminalRunning || !terminalInput.trim()}>Run</button>
+                  </form>
+                </div>
+              )}
+              {rightTab === "files" && (
+                <div className="files-pane">
+                  <div className="files-toolbar">
+                    <button
+                      onClick={() => {
+                        if (currentDir) void loadDirectory(parentDirectoryPath(currentDir));
+                      }}
+                      disabled={!currentDir || filesLoading}
+                    >
+                      Up
+                    </button>
+                    <span className="muted">{currentDir || "No folder open"}</span>
+                  </div>
+                  <div className="file-list">
+                    {filesLoading && <div className="muted">Loading…</div>}
+                    {!filesLoading && directoryEntries.map((entry) => (
                       <button
                         key={entry.fileName}
                         className="file-item"
                         onClick={() => {
                           if (!currentDir) return;
-                          const path = `${currentDir.replace(/[\/]+$/, "")}/${entry.fileName}`;
-                          if (entry.isDirectory) {
-                            void loadDirectory(path);
-                          } else {
-                            void openFile(path);
-                          }
+                          const path = `${currentDir.replace(/[\\/]+$/, "")}/${entry.fileName}`;
+                          if (entry.isDirectory) void loadDirectory(path);
+                          else void openFile(path);
                         }}
                       >
                         <span>{entry.isDirectory ? "📁" : "📄"}</span>
                         <span>{entry.fileName}</span>
                       </button>
                     ))}
-                </div>
-                {selectedFile && (
-                  <div className="file-preview">
-                    <div className="file-preview-head">
-                      <strong>{selectedFile.path}</strong>
-                      <button onClick={() => setSelectedFile(null)}>Close</button>
-                    </div>
-                    <pre>{selectedFile.content}</pre>
                   </div>
-                )}
-              </div>
-            ) : rightTab === "terminal" ? (
-              <div className="terminal-pane">
-                <div className="terminal-toolbar">
-                  <span className={terminalRunning ? "status-dot online" : "status-dot"} />
-                  <span>{terminalRunning ? terminalProcessId : "terminal stopped"}</span>
-                  <button onClick={() => void stopTerminal()} disabled={!terminalRunning}>
-                    Stop
-                  </button>
-                </div>
-                <pre className="terminal-output">{terminalOutput || "Terminal ready. Type a command."}</pre>
-                <form
-                  className="terminal-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void writeTerminalInput();
-                  }}
-                >
-                  <input
-                    value={terminalInput}
-                    onChange={(event) => setTerminalInput(event.currentTarget.value)}
-                    disabled={!terminalRunning}
-                    placeholder={terminalRunning ? "$ command" : "Start a terminal first"}
-                  />
-                  <button type="submit" disabled={!terminalRunning || !terminalInput.trim()}>
-                    Run
-                  </button>
-                </form>
-              </div>
-            ) : rightTab === "events" ? (
-              <div className="event-list">
-                {events.length === 0 && <div className="muted">Waiting for app-server events…</div>}
-                {events.map((item) => (
-                  <div key={item.id} className={`event-item ${item.kind}`}>
-                    <div className="event-head">
-                      <span>{item.time}</span>
-                      <strong>{item.title}</strong>
+                  {selectedFile && (
+                    <div className="file-preview">
+                      <div className="file-preview-head">
+                        <strong>{selectedFile.path}</strong>
+                        <button onClick={() => setSelectedFile(null)}>Close</button>
+                      </div>
+                      <pre>{selectedFile.content}</pre>
                     </div>
-                    {item.detail && <pre>{item.detail}</pre>}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="status-pane">
-                <h2>Connection</h2>
-                <p>
-                  <span className={`status-dot ${status.running ? "online" : "offline"}`} />
-                  {status.running ? "Running" : "Offline"}
-                </p>
-                <p className="muted">{status.binary || "binary path unavailable"}</p>
-
-                <h2>Error</h2>
-                <p className={error ? "error-text" : "muted"}>{error || "None"}</p>
-              </div>
-            )}
-          </aside>
+                  )}
+                </div>
+              )}
+              {rightTab === "status" && (
+                <div className="status-pane">
+                  <h2>Connection</h2>
+                  <p>
+                    <span className={`status-dot ${status.running ? "online" : "offline"}`} />
+                    {status.running ? "Running" : "Offline"}
+                  </p>
+                  <p className="muted">{status.binary || "binary path unavailable"}</p>
+                  <h2>Error</h2>
+                  <p className={error ? "error-text" : "muted"}>{error || "None"}</p>
+                </div>
+              )}
+            </aside>
+          )}
         </div>
       </section>
+
+      {settingsOpen && (
+        <div className="settings-backdrop" onClick={() => setSettingsOpen(false)}>
+          <div className="settings-dialog" onClick={(event) => event.stopPropagation()}>
+            <h2>Settings</h2>
+            <label className="settings-field">
+              <span>Provider</span>
+              <input
+                list="provider-options"
+                value={selectedProvider}
+                onChange={(event) => setSelectedProvider(event.currentTarget.value)}
+                placeholder="openai"
+              />
+              <datalist id="provider-options">
+                <option value="openai" />
+                <option value="anthropic" />
+                <option value="google" />
+                <option value="azure" />
+                <option value="bedrock" />
+                <option value="ollama" />
+                <option value="lmstudio" />
+              </datalist>
+            </label>
+            <label className="settings-field">
+              <span>Model</span>
+              <select
+                value={selectedModel ?? ""}
+                onChange={(event) => {
+                  const model = models.find((item) => item.model === event.currentTarget.value);
+                  setSelectedModel(event.currentTarget.value || null);
+                  setSelectedEffort(model?.defaultReasoningEffort ?? null);
+                }}
+                disabled={booting || models.length === 0}
+              >
+                {models.length === 0 && <option value="">Loading models…</option>}
+                {models.map((model) => (
+                  <option key={model.id} value={model.model}>
+                    {model.displayName || model.model}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="settings-field">
+              <span>Reasoning effort</span>
+              <select
+                value={selectedEffort ?? ""}
+                onChange={(event) => setSelectedEffort(event.currentTarget.value || null)}
+              >
+                <option value="">Default</option>
+                {(models.find((model) => model.model === selectedModel)?.supportedReasoningEfforts ?? []).map(
+                  (option) => (
+                    <option key={option.reasoningEffort ?? "default"} value={option.reasoningEffort ?? ""}>
+                      {option.reasoningEffort || "default"}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label className="settings-field">
+              <span>Theme</span>
+              <button
+                className="icon-button"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              >
+                {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+              </button>
+            </label>
+            <div className="settings-actions">
+              <button onClick={() => setSettingsOpen(false)}>Cancel</button>
+              <button onClick={saveSettings}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
-
 export default App;
