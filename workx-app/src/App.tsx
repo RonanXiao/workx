@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppServerClient,
   type AppServerStatus,
+  type JsonRpcId,
   type JsonRpcResponse,
 } from "./lib/appServer";
 import "./App.css";
@@ -52,6 +53,13 @@ interface InitializeResponse {
 type MessageRole = "user" | "assistant" | "tool" | "system" | "error";
 type MessageStatus = "streaming" | "done" | "error";
 
+interface PendingApproval {
+  id: JsonRpcId;
+  method: string;
+  params: Record<string, any>;
+  time: string;
+}
+
 interface ConversationMessage {
   id: string;
   threadId: string;
@@ -101,7 +109,8 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
-  const [rightTab, setRightTab] = useState<"events" | "status">("events");
+  const [rightTab, setRightTab] = useState<"events" | "approvals" | "status">("events");
+  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const eventId = useRef(0);
 
   const visibleMessages = useMemo(
@@ -131,6 +140,27 @@ function App() {
       next[index] = update(next[index]);
       return next;
     });
+  }
+
+  function handleServerRequest(message: JsonRpcResponse): void {
+    if (message.id === undefined || !message.method) return;
+    const request: PendingApproval = {
+      id: message.id,
+      method: message.method,
+      params: asRecord(message.params),
+      time: formatTime(new Date()),
+    };
+    setApprovals((current) => [request, ...current.filter((item) => String(item.id) !== String(request.id))]);
+    setRightTab("approvals");
+  }
+
+  async function resolveApproval(request: PendingApproval, result: unknown): Promise<void> {
+    try {
+      await client.respondToServerRequest(request.id, result);
+      setApprovals((current) => current.filter((item) => String(item.id) !== String(request.id)));
+    } catch (reason) {
+      setError(String(reason));
+    }
   }
 
   function handleNotification(method: string, params: unknown): void {
@@ -342,6 +372,16 @@ function App() {
       }
 
       if (message.method) {
+        if (
+          message.id !== undefined &&
+          message.result === undefined &&
+          message.error === undefined
+        ) {
+          pushEvent("notification", `server request: ${message.method}`, prettyJson(message.params));
+          handleServerRequest(message);
+          return;
+        }
+
         pushEvent("notification", message.method, prettyJson(message.params));
         handleNotification(message.method, message.params);
         return;
@@ -469,10 +509,8 @@ function App() {
           <div className="topbar-title">{activeTitle}</div>
           <div className="topbar-actions">
             <button onClick={startNewThread} disabled={booting}>New</button>
-            <button
-              onClick={() => setRightTab(rightTab === "events" ? "status" : "events")}
-            >
-              {rightTab === "events" ? "Status" : "Events"}
+            <button onClick={() => setRightTab("approvals")}>
+              Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
             </button>
           </div>
         </header>
@@ -538,12 +576,60 @@ function App() {
               <button className={rightTab === "events" ? "active" : ""} onClick={() => setRightTab("events")}>
                 Events
               </button>
+              <button className={rightTab === "approvals" ? "active" : ""} onClick={() => setRightTab("approvals")}>
+                Approvals
+              </button>
               <button className={rightTab === "status" ? "active" : ""} onClick={() => setRightTab("status")}>
                 Status
               </button>
             </div>
 
-            {rightTab === "events" ? (
+            {rightTab === "approvals" ? (
+              <div className="approval-list">
+                {approvals.length === 0 && <div className="muted">No pending approvals</div>}
+                {approvals.map((approval) => (
+                  <div key={String(approval.id)} className="approval-card">
+                    <div className="approval-head">
+                      <span>{approval.time}</span>
+                      <strong>{approval.method}</strong>
+                    </div>
+                    {approval.params.command && <pre>{approval.params.command}</pre>}
+                    {approval.params.reason && <p className="muted">{approval.params.reason}</p>}
+                    {!approval.params.command && !approval.params.reason && (
+                      <pre>{prettyJson(approval.params)}</pre>
+                    )}
+                    <div className="approval-actions">
+                      {approval.method === "item/commandExecution/requestApproval" && (
+                        <>
+                          <button onClick={() => void resolveApproval(approval, { decision: "accept" })}>
+                            Accept
+                          </button>
+                          <button onClick={() => void resolveApproval(approval, { decision: "acceptForSession" })}>
+                            Accept session
+                          </button>
+                        </>
+                      )}
+                      {approval.method === "item/fileChange/requestApproval" && (
+                        <>
+                          <button onClick={() => void resolveApproval(approval, { decision: "accept" })}>
+                            Accept
+                          </button>
+                          <button onClick={() => void resolveApproval(approval, { decision: "acceptForSession" })}>
+                            Accept session
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => void resolveApproval(approval, { decision: "decline" })}>
+                        Decline
+                      </button>
+                      <button onClick={() => void resolveApproval(approval, { decision: "cancel" })}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : rightTab === "events" ? (
               <div className="event-list">
                 {events.length === 0 && <div className="muted">Waiting for app-server events…</div>}
                 {events.map((item) => (

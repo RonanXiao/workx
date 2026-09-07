@@ -90,6 +90,22 @@ export class AppServerClient {
     });
   }
 
+  async respondToServerRequest(id: JsonRpcId, result: unknown): Promise<void> {
+    await invoke("app_server_write", {
+      payload: JSON.stringify({ jsonrpc: "2.0", id, result }),
+    });
+  }
+
+  async rejectServerRequest(
+    id: JsonRpcId,
+    code = -32000,
+    message = "Request rejected",
+  ): Promise<void> {
+    await invoke("app_server_write", {
+      payload: JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }),
+    });
+  }
+
   async notify(method: string, params?: unknown): Promise<void> {
     const message = {
       jsonrpc: "2.0" as const,
@@ -140,7 +156,13 @@ export class AppServerClient {
       return;
     }
 
-    if (message.id !== undefined) {
+    const isServerRequest =
+      message.id !== undefined &&
+      message.method !== undefined &&
+      message.result === undefined &&
+      message.error === undefined;
+
+    if (message.id !== undefined && !isServerRequest) {
       const id = String(message.id);
       const pending = this.pending.get(id);
       if (pending) {
