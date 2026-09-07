@@ -1,0 +1,57 @@
+name: workx-app
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "workx-app/**"
+  push:
+    branches:
+      - "feat/workx-desktop-app"
+    paths:
+      - "workx-app/**"
+
+jobs:
+  desktop-build:
+    name: Workx desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            sidecar: workx-app-server-aarch64-apple-darwin
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            sidecar: workx-app-server-x86_64-pc-windows-msvc.exe
+
+    defaults:
+      run:
+        working-directory: workx-app
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workx-app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Stage empty app-server sidecar for build-time resource checks
+        run: |
+          mkdir -p src-tauri/binaries
+          touch "src-tauri/binaries/${{ matrix.sidecar }}"
+
+      - name: Build Workx desktop app
+        run: npx tauri build --debug --no-bundle
