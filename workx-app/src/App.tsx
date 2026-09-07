@@ -98,6 +98,32 @@ interface FsReadFileResponse {
   dataBase64: string;
 }
 
+interface PluginSummary {
+  id: string;
+  name: string;
+  enabled: boolean;
+  installed: boolean;
+  source?: unknown;
+  interface?: {
+    displayName?: string | null;
+    shortDescription?: string | null;
+    logoUrl?: string | null;
+    logoUrlDark?: string | null;
+    brandColor?: string | null;
+    defaultPrompt?: string[] | null;
+  } | null;
+}
+
+interface PluginMarketplace {
+  name: string;
+  interface?: { displayName?: string | null } | null;
+  plugins: PluginSummary[];
+}
+
+interface PluginListResponse {
+  marketplaces: PluginMarketplace[];
+}
+
 type MessageRole = "user" | "assistant" | "tool" | "system" | "error";
 type MessageStatus = "streaming" | "done" | "error";
 
@@ -301,6 +327,8 @@ function App() {
     return stored === "dark" ? "dark" : "light";
   });
   const [selectedProvider, setSelectedProvider] = useState<string>(() => localStorage.getItem("workx-provider") || "openai");
+  const [plugins, setPlugins] = useState<PluginSummary[]>([]);
+  const [pluginsLoading, setPluginsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [mode, setMode] = useState<"chat" | "work">("chat");
@@ -308,7 +336,7 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "status">("events");
+  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "plugins" | "pullRequests" | "status">("events");
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [terminalProcessId, setTerminalProcessId] = useState<string | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
@@ -841,6 +869,26 @@ function App() {
     }
   }
 
+  async function loadPlugins(): Promise<void> {
+    if (pluginsLoading) return;
+    setPluginsLoading(true);
+    setError(null);
+    try {
+      const response = await client.request<PluginListResponse>("plugin/list", {});
+      const flattened = response.marketplaces.flatMap((marketplace) =>
+        marketplace.plugins.map((plugin) => ({ ...plugin, marketplace: marketplace.name })),
+      );
+      setPlugins(flattened);
+      if (flattened.length === 0) {
+        pushEvent("system", "plugins", "No plugins found");
+      }
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setPluginsLoading(false);
+    }
+  }
+
   function saveSettings(): void {
     localStorage.setItem("workx-provider", selectedProvider);
     setSettingsOpen(false);
@@ -866,11 +914,20 @@ function App() {
           <button className="nav-item" onClick={startNewThread} disabled={booting}>
             <span className="nav-icon">✏️</span> New chat
           </button>
-          <button className="nav-item" onClick={() => openRight("files")} disabled={booting}>
-            <span className="nav-icon">📁</span> Plugins
+          <button className="nav-item" onClick={() => openRight("pullRequests")}>
+            <span className="nav-icon">🔀</span> Pull requests
           </button>
           <button className="nav-item" onClick={() => openRight("events")}>
             <span className="nav-icon">🕐</span> Scheduled
+          </button>
+          <button
+            className="nav-item"
+            onClick={() => {
+              openRight("plugins");
+              void loadPlugins();
+            }}
+          >
+            <span className="nav-icon">🧩</span> Plugins
           </button>
         </nav>
 
@@ -1153,6 +1210,43 @@ function App() {
                       <pre>{selectedFile.content}</pre>
                     </div>
                   )}
+                </div>
+              )}
+              {rightTab === "plugins" && (
+                <div className="plugins-pane">
+                  <div className="plugins-header">
+                    <strong>Plugins</strong>
+                    <button onClick={() => void loadPlugins()} disabled={pluginsLoading}>
+                      {pluginsLoading ? "Loading…" : "Refresh"}
+                    </button>
+                  </div>
+                  {pluginsLoading && <div className="muted">Loading plugins…</div>}
+                  {!pluginsLoading && plugins.length === 0 && <div className="muted">No plugins found</div>}
+                  {plugins.map((plugin) => (
+                    <div key={plugin.id} className="plugin-card">
+                      <div className="plugin-icon">
+                        {plugin.interface?.logoUrl || plugin.interface?.logoUrlDark ? (
+                          <img src={plugin.interface.logoUrl || plugin.interface.logoUrlDark || ""} alt="" />
+                        ) : (
+                          "🧩"
+                        )}
+                      </div>
+                      <div className="plugin-body">
+                        <div className="plugin-title">{plugin.interface?.displayName || plugin.name}</div>
+                        <div className="plugin-desc">{plugin.interface?.shortDescription || plugin.name}</div>
+                        <div className="plugin-meta">
+                          <span>{plugin.enabled ? "Enabled" : "Disabled"}</span>
+                          <span>· {plugin.installed ? "Installed" : "Available"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {rightTab === "pullRequests" && (
+                <div className="placeholder-pane">
+                  <h2>Pull requests</h2>
+                  <p className="muted">Codex pull request review will appear here once Git/GitHub is connected.</p>
                 </div>
               )}
               {rightTab === "status" && (

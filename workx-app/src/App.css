@@ -947,3 +947,71 @@ pre {
 .settings-actions button {
   padding: 8px 16px;
 }
+
+.plugins-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+  gap: 10px;
+}
+
+.plugins-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plugin-card {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--bg);
+}
+
+.plugin-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  overflow: hidden;
+}
+
+.plugin-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.plugin-body {
+  min-width: 0;
+}
+
+.plugin-title {
+  font-weight: 650;
+}
+
+.plugin-desc {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 4px 0 6px;
+}
+
+.plugin-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.placeholder-pane {
+  padding: 16px;
+}
+
+.placeholder-pane h2 {
+  margin-top: 0;
+}
