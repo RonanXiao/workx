@@ -1266,3 +1266,18 @@ pre {
   color: #f97316;
   font-weight: 600;
 }
+
+.scheduled-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+  gap: 10px;
+}
+
+.scheduled-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--bg);
+}

@@ -124,6 +124,20 @@ interface PluginListResponse {
   marketplaces: PluginMarketplace[];
 }
 
+interface ScheduledTaskSummary {
+  key: string;
+  name: string;
+  prompt: string;
+  schedule?: unknown;
+  marketplace?: string;
+}
+
+interface PluginReadResponse {
+  plugin: {
+    scheduledTasks?: ScheduledTaskSummary[] | null;
+  };
+}
+
 type MessageRole = "user" | "assistant" | "tool" | "system" | "error";
 type MessageStatus = "streaming" | "done" | "error";
 
@@ -354,6 +368,7 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState<string>(() => localStorage.getItem("workx-provider") || "openai");
   const [plugins, setPlugins] = useState<PluginSummary[]>([]);
   const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskSummary[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
@@ -364,7 +379,7 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "plugins" | "pullRequests" | "status">("events");
+  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "plugins" | "scheduled" | "status">("events");
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [terminalProcessId, setTerminalProcessId] = useState<string | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
@@ -924,7 +939,11 @@ function App() {
     try {
       const response = await client.request<PluginListResponse>("plugin/list", {});
       const flattened = response.marketplaces.flatMap((marketplace) =>
-        marketplace.plugins.map((plugin) => ({ ...plugin, marketplace: marketplace.name })),
+        marketplace.plugins.map((plugin) => ({
+          ...plugin,
+          marketplace: marketplace.name,
+          marketplacePath: ("path" in marketplace ? marketplace.path : undefined) as string | undefined,
+        })),
       );
       setPlugins(flattened);
       if (flattened.length === 0) {
@@ -934,6 +953,33 @@ function App() {
       setError(String(reason));
     } finally {
       setPluginsLoading(false);
+    }
+  }
+
+  async function loadScheduled(): Promise<void> {
+    setError(null);
+    try {
+      const response = await client.request<PluginListResponse>("plugin/list", {});
+      const tasks: ScheduledTaskSummary[] = [];
+      for (const marketplace of response.marketplaces) {
+        for (const plugin of marketplace.plugins) {
+          try {
+            const detail = await client.request<PluginReadResponse>("plugin/read", {
+              pluginName: plugin.name,
+              marketplacePath: ("path" in marketplace ? marketplace.path : undefined) ?? undefined,
+              remoteMarketplaceName: undefined,
+            });
+            for (const task of detail.plugin.scheduledTasks ?? []) {
+              tasks.push({ ...task, marketplace: marketplace.name });
+            }
+          } catch {
+            // Remote plugins may not expose a local read path; skip.
+          }
+        }
+      }
+      setScheduledTasks(tasks);
+    } catch (reason) {
+      setError(String(reason));
     }
   }
 
@@ -1075,10 +1121,13 @@ function App() {
           <button className="nav-item" onClick={startNewThread} disabled={booting}>
             <span className="nav-icon">✏️</span> New chat
           </button>
-          <button className="nav-item" onClick={() => openRight("pullRequests")}>
-            <span className="nav-icon">🔀</span> Pull requests
-          </button>
-          <button className="nav-item" onClick={() => openRight("events")}>
+          <button
+            className="nav-item"
+            onClick={() => {
+              openRight("scheduled");
+              void loadScheduled();
+            }}
+          >
             <span className="nav-icon">🕐</span> Scheduled
           </button>
           <button
@@ -1454,10 +1503,23 @@ function App() {
                   </div>
                 </div>
               )}
-              {rightTab === "pullRequests" && (
-                <div className="placeholder-pane">
-                  <h2>Pull requests</h2>
-                  <p className="muted">Codex pull request review will appear here once Git/GitHub is connected.</p>
+              {rightTab === "scheduled" && (
+                <div className="scheduled-pane">
+                  <div className="plugins-header">
+                    <strong>Scheduled</strong>
+                    <span className="muted">{scheduledTasks.length} tasks</span>
+                    <button onClick={() => void loadScheduled()}>Refresh</button>
+                  </div>
+                  {scheduledTasks.length === 0 && (
+                    <div className="muted">No scheduled tasks from installed plugins.</div>
+                  )}
+                  {scheduledTasks.map((task) => (
+                    <div key={task.key} className="scheduled-card">
+                      <div className="plugin-title">{task.name}</div>
+                      <div className="plugin-desc">{task.prompt}</div>
+                      <div className="plugin-meta">{JSON.stringify(task.schedule ?? "")}</div>
+                    </div>
+                  ))}
                 </div>
               )}
               {rightTab === "status" && (
