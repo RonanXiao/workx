@@ -108,6 +108,7 @@ interface PluginSummary {
   interface?: {
     displayName?: string | null;
     shortDescription?: string | null;
+    category?: string | null;
     logoUrl?: string | null;
     logoUrlDark?: string | null;
     brandColor?: string | null;
@@ -385,6 +386,8 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState<string>(() => localStorage.getItem("workx-provider") || "openai");
   const [plugins, setPlugins] = useState<PluginSummary[]>([]);
   const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [pluginSearch, setPluginSearch] = useState("");
+  const [pluginCategory, setPluginCategory] = useState("All");
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskSummary[]>([]);
   const [projects, setProjects] = useState<WorkxProject[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -463,6 +466,27 @@ function App() {
       [...visibleThreads].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)),
     [visibleThreads],
   );
+
+  const pluginCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const plugin of plugins) {
+      const category = plugin.interface?.category;
+      if (category) set.add(category);
+    }
+    return ["All", ...Array.from(set).sort()];
+  }, [plugins]);
+
+  const filteredPlugins = useMemo(() => {
+    const term = pluginSearch.trim().toLowerCase();
+    return plugins.filter((plugin) => {
+      const title = plugin.interface?.displayName || plugin.name;
+      const desc = plugin.interface?.shortDescription || "";
+      const matchesTerm = !term || title.toLowerCase().includes(term) || desc.toLowerCase().includes(term);
+      const category = plugin.interface?.category;
+      const matchesCategory = pluginCategory === "All" || category === pluginCategory;
+      return matchesTerm && matchesCategory;
+    });
+  }, [plugins, pluginSearch, pluginCategory]);
 
   function pushEvent(
     kind: EventKind,
@@ -1357,15 +1381,31 @@ function App() {
                 <div className="plugins-pane full">
                   <div className="plugins-header">
                     <strong>All plugins</strong>
-                    <span className="muted">{plugins.length} found</span>
+                    <span className="muted">{filteredPlugins.length} found</span>
                     <button onClick={() => void loadPlugins()} disabled={pluginsLoading}>
                       {pluginsLoading ? "Loading…" : "Refresh"}
                     </button>
                   </div>
+                  <div className="plugins-toolbar">
+                    <input
+                      className="search"
+                      placeholder="Search plugins"
+                      value={pluginSearch}
+                      onChange={(event) => setPluginSearch(event.currentTarget.value)}
+                    />
+                    <select
+                      value={pluginCategory}
+                      onChange={(event) => setPluginCategory(event.currentTarget.value)}
+                    >
+                      {pluginCategories.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
                   {pluginsLoading && <div className="muted">Loading plugins…</div>}
-                  {!pluginsLoading && plugins.length === 0 && <div className="muted">No plugins found</div>}
+                  {!pluginsLoading && filteredPlugins.length === 0 && <div className="muted">No plugins found</div>}
                   <div className="plugins-grid">
-                    {plugins.map((plugin) => (
+                    {filteredPlugins.map((plugin) => (
                       <div key={plugin.id} className="plugin-card">
                         <div className="plugin-icon">
                           {plugin.interface?.logoUrl || plugin.interface?.logoUrlDark ? (

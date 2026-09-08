@@ -1316,3 +1316,22 @@ pre {
   max-width: 960px;
   padding: 0;
 }
+
+.plugins-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.plugins-toolbar .search {
+  flex: 1;
+  max-width: 320px;
+}
+
+.plugins-toolbar select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
