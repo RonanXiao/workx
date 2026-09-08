@@ -395,6 +395,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
+  const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [alwaysAllow, setAlwaysAllow] = useState(false);
   const [mode, setMode] = useState<"chat" | "work">("chat");
@@ -1062,6 +1063,27 @@ function App() {
     }
   }
 
+  async function startNewThreadWithCwd(cwd: string): Promise<void> {
+    setError(null);
+    try {
+      const response = await client.request<ThreadStartResponse>("thread/start", {
+        cwd,
+        ...(selectedModel ? { model: selectedModel } : {}),
+        ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
+        approvalPolicy: alwaysAllow ? "never" : "on-request",
+      });
+      setActiveThread(response.thread);
+      setCurrentDir(response.thread.cwd ?? null);
+      setThreads((current) => [
+        response.thread,
+        ...current.filter((thread) => thread.id !== response.thread.id),
+      ]);
+      pushEvent("system", "thread/start with project", cwd);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   function saveSettings(): void {
     localStorage.setItem("workx-provider", selectedProvider);
     setSettingsOpen(false);
@@ -1228,20 +1250,56 @@ function App() {
             </button>
           )}
           {projectGroups.map((group) => (
-            <button
-              key={group.project.id}
-              className="section-item"
-              onClick={() => {
-                if (group.root) {
-                  void loadDirectory(group.root);
-                  openRight("files");
-                }
-              }}
-            >
-              <span className="nav-icon">📁</span>
-              <span className="project-name">{group.project.name}</span>
-              <span className="section-count">{group.count}</span>
-            </button>
+            <div key={group.project.id} className="project-row">
+              <button
+                className="section-item"
+                onClick={() => {
+                  if (group.root) {
+                    void loadDirectory(group.root);
+                    openRight("files");
+                  }
+                }}
+              >
+                <span className="nav-icon">📁</span>
+                <span className="project-name">{group.project.name}</span>
+                <span className="section-count">{group.count}</span>
+              </button>
+              <button
+                className="thread-menu-trigger"
+                title="Project actions"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setProjectMenuId((current) => (current === group.project.id ? null : group.project.id));
+                }}
+              >
+                ⋯
+              </button>
+              {projectMenuId === group.project.id && (
+                <div className="thread-context-menu">
+                  <button
+                    onClick={() => {
+                      if (group.root) {
+                        void loadDirectory(group.root);
+                        openRight("files");
+                      }
+                      setProjectMenuId(null);
+                    }}
+                  >
+                    Open folder
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (group.root) {
+                        void startNewThreadWithCwd(group.root);
+                      }
+                      setProjectMenuId(null);
+                    }}
+                  >
+                    New chat
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
 

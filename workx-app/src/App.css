@@ -1335,3 +1335,15 @@ pre {
   border-radius: 8px;
   padding: 8px;
 }
+
+.project-row {
+  position: relative;
+}
+
+.project-row .thread-menu-trigger {
+  top: 50%;
+}
+
+.project-row:hover .thread-menu-trigger {
+  opacity: 1;
+}
