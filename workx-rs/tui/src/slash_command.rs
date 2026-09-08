@@ -35,6 +35,7 @@ pub enum SlashCommand {
     Archive,
     Delete,
     Resume,
+    Codex,
     Fork,
     App,
     Init,
@@ -96,6 +97,7 @@ impl SlashCommand {
             SlashCommand::Review => "review my current changes and find issues",
             SlashCommand::Rename => "rename the current thread",
             SlashCommand::Resume => "resume a saved chat",
+            SlashCommand::Codex => "copy chats from Codex and resume them here",
             SlashCommand::Archive => "archive this session and exit",
             SlashCommand::Delete => "permanently delete this session and exit",
             SlashCommand::Clear => "clear the terminal and start a new chat",
@@ -223,6 +225,7 @@ impl SlashCommand {
             | SlashCommand::Experimental
             | SlashCommand::Memories
             | SlashCommand::Import
+            | SlashCommand::Codex
             | SlashCommand::Review
             | SlashCommand::Plan
             | SlashCommand::Cd

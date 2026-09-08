@@ -181,12 +181,18 @@ impl ExternalAgentConfigService {
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
-        let projects_root = match fs::canonicalize(self.external_agent_home.join("projects")) {
-            Ok(projects_root) => projects_root,
+        // Codex stores rollouts under `<home>/sessions`; other sources use `<home>/projects`.
+        let source_root = if matches!(self.source, ExternalAgentSource::Cod) {
+            self.external_agent_home.join("sessions")
+        } else {
+            self.external_agent_home.join("projects")
+        };
+        let source_root = match fs::canonicalize(source_root) {
+            Ok(source_root) => source_root,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
-        Ok(path.starts_with(projects_root).then_some(path))
+        Ok(path.starts_with(source_root).then_some(path))
     }
 
     pub async fn import(
@@ -796,6 +802,11 @@ impl ExternalAgentConfigService {
 }
 
 fn default_external_agent_home(source: ExternalAgentSource) -> PathBuf {
+    if matches!(source, ExternalAgentSource::Cod)
+        && let Some(codex_home) = std::env::var_os("CODEX_HOME")
+    {
+        return PathBuf::from(codex_home);
+    }
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         return PathBuf::from(home).join(source.config_dir());
     }

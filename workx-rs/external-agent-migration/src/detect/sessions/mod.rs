@@ -1,4 +1,5 @@
 mod cla;
+mod cod;
 mod common;
 mod connectors_cla;
 mod connectors_cur;
@@ -10,6 +11,8 @@ use std::path::PathBuf;
 
 pub use cla::detect_recent_cla_sessions;
 pub(crate) use cla::detect_recent_cla_sessions_with_limits;
+pub use cod::detect_recent_cod_sessions;
+pub(crate) use cod::detect_recent_cod_sessions_with_limits;
 pub use connectors_cla::ImportedSessionConnectorAttribution;
 pub(crate) use connectors_cla::detect_cla_session_connectors;
 pub(crate) use connectors_cla::detect_cla_session_connectors_by_source_path;

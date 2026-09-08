@@ -319,6 +319,34 @@ impl App {
                 }
                 tui.frame_requester().schedule_frame();
             }
+            AppEvent::OpenCodexConversationMigration => {
+                match crate::external_agent_config_migration::flow::handle_codex_conversation_migration_prompt(
+                    tui,
+                    app_server,
+                    &self.config,
+                )
+                .await
+                {
+                    Ok(ExternalAgentConfigMigrationFlowOutcome::Started(lines)) => {
+                        self.chat_widget.add_plain_history_lines(lines);
+                    }
+                    Ok(ExternalAgentConfigMigrationFlowOutcome::NoItems) => {
+                        self.chat_widget.add_info_message(
+                            crate::external_agent_config_migration::flow::CODEX_CONVERSATION_MIGRATION_NO_ITEMS_MESSAGE
+                                .to_string(),
+                            /*hint*/ None,
+                        );
+                    }
+                    Ok(ExternalAgentConfigMigrationFlowOutcome::Cancelled) => {}
+                    Ok(ExternalAgentConfigMigrationFlowOutcome::TerminalError(err)) => {
+                        return Err(err.into());
+                    }
+                    Err(error_message) => {
+                        self.chat_widget.add_error_message(error_message);
+                    }
+                }
+                tui.frame_requester().schedule_frame();
+            }
             AppEvent::ResumeSessionByIdOrName(id_or_name) => {
                 match crate::lookup_session_target_with_app_server(
                     app_server,

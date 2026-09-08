@@ -307,6 +307,7 @@ pub(crate) struct AppServerSession {
     available_models: Vec<ModelPreset>,
     managed_new_thread_defaults: Option<NewThreadModelDefaults>,
     external_agent_config_import_completion_pending: AtomicBool,
+    codex_session_import_pending_resume: AtomicBool,
     dynamic_tool_mcp: Option<Arc<DynamicToolMcpServer>>,
 }
 
@@ -395,6 +396,7 @@ impl AppServerSession {
             available_models: Vec::new(),
             managed_new_thread_defaults: None,
             external_agent_config_import_completion_pending: AtomicBool::new(false),
+            codex_session_import_pending_resume: AtomicBool::new(false),
             dynamic_tool_mcp: None,
         }
     }
@@ -742,6 +744,16 @@ impl AppServerSession {
 
     pub(crate) fn consume_external_agent_config_import_completion(&self) -> bool {
         self.external_agent_config_import_completion_pending
+            .swap(false, Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_codex_session_import_pending_resume(&self) {
+        self.codex_session_import_pending_resume
+            .store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn consume_codex_session_import_pending_resume(&self) -> bool {
+        self.codex_session_import_pending_resume
             .swap(false, Ordering::Relaxed)
     }
 

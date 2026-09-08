@@ -20,6 +20,9 @@ pub(crate) const EXTERNAL_AGENT_CONFIG_MIGRATION_NO_ITEMS_MESSAGE: &str =
     "No compatible setup was found to import.";
 pub(crate) const EXTERNAL_AGENT_CONFIG_MIGRATION_REMOTE_UNAVAILABLE_MESSAGE: &str = "Import from other apps is unavailable in remote sessions. Start Workx locally and run /import.";
 pub(crate) const EXTERNAL_AGENT_CONFIG_MIGRATION_DAEMON_UNAVAILABLE_MESSAGE: &str = "Import from other apps is unavailable while Workx is connected to the local app-server daemon. Stop the daemon, restart Workx, and run /import.";
+pub(crate) const CODEX_MIGRATION_SOURCE: &str = "codex";
+pub(crate) const CODEX_CONVERSATION_MIGRATION_NO_ITEMS_MESSAGE: &str =
+    "No recent Codex chats were found to import.";
 
 pub(crate) enum ExternalAgentConfigMigrationFlowOutcome {
     Started(Vec<Line<'static>>),
@@ -364,6 +367,81 @@ pub(crate) async fn handle_external_agent_config_migration_prompt(
                             error = %err,
                             cwd = %cwd.display(),
                             "failed to import external agent config migration items"
+                        );
+                        error = Some(format!("Import failed: {err}"));
+                    }
+                }
+            }
+            Ok(ExternalAgentConfigMigrationOutcome::Skip) => {
+                return Ok(ExternalAgentConfigMigrationFlowOutcome::Cancelled);
+            }
+            Err(err) => return Ok(ExternalAgentConfigMigrationFlowOutcome::TerminalError(err)),
+        }
+    }
+}
+
+pub(crate) async fn handle_codex_conversation_migration_prompt(
+    tui: &mut tui::Tui,
+    app_server: &mut AppServerSession,
+    config: &Config,
+) -> Result<ExternalAgentConfigMigrationFlowOutcome, String> {
+    if app_server.uses_remote_workspace() {
+        return Err(EXTERNAL_AGENT_CONFIG_MIGRATION_REMOTE_UNAVAILABLE_MESSAGE.to_string());
+    }
+    if !app_server.uses_embedded_app_server() {
+        return Err(EXTERNAL_AGENT_CONFIG_MIGRATION_DAEMON_UNAVAILABLE_MESSAGE.to_string());
+    }
+    if app_server.external_agent_config_import_in_progress() {
+        return Err(EXTERNAL_AGENT_CONFIG_IMPORT_IN_PROGRESS_MESSAGE.to_string());
+    }
+
+    let response = app_server
+        .external_agent_config_detect(ExternalAgentConfigDetectParams {
+            include_home: true,
+            cwds: None,
+            max_session_age_days: None,
+            max_sessions: None,
+            source: None,
+            migration_source: Some(CODEX_MIGRATION_SOURCE.to_string()),
+        })
+        .await
+        .map_err(|err| format!("Codex chat detection failed: {err}"))?;
+    if response.items.is_empty() {
+        return Ok(ExternalAgentConfigMigrationFlowOutcome::NoItems);
+    }
+
+    let mut selected_items = response.items.clone();
+    let mut error: Option<String> = None;
+    loop {
+        match run_external_agent_config_migration_prompt(
+            tui,
+            &response.items,
+            &selected_items,
+            error.as_deref(),
+        )
+        .await
+        {
+            Ok(ExternalAgentConfigMigrationOutcome::Proceed(items)) => {
+                selected_items = items.clone();
+                match app_server
+                    .external_agent_config_import(items, CODEX_MIGRATION_SOURCE.to_string())
+                    .await
+                {
+                    Ok(()) => {
+                        app_server.set_codex_session_import_pending_resume();
+                        let started_lines = external_agent_config_migration_started_lines(
+                            &selected_items,
+                            /*remaining_item_count*/ 0,
+                        );
+                        return Ok(ExternalAgentConfigMigrationFlowOutcome::Started(
+                            started_lines,
+                        ));
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            error = %err,
+                            cwd = %config.cwd.display(),
+                            "failed to import codex conversation migration items"
                         );
                         error = Some(format!("Import failed: {err}"));
                     }

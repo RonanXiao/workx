@@ -464,6 +464,10 @@ impl ChatWidget {
                 self.app_event_tx
                     .send(AppEvent::OpenExternalAgentConfigMigration);
             }
+            SlashCommand::Codex => {
+                self.app_event_tx
+                    .send(AppEvent::OpenCodexConversationMigration);
+            }
             SlashCommand::Hooks => {
                 self.add_hooks_output();
             }
@@ -1198,6 +1202,7 @@ impl ChatWidget {
             | SlashCommand::Mention
             | SlashCommand::Skills
             | SlashCommand::Import
+            | SlashCommand::Codex
             | SlashCommand::Hooks
             | SlashCommand::Title
             | SlashCommand::Statusline

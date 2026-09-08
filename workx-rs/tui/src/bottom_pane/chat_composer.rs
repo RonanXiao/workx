@@ -428,6 +428,7 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                 | SlashCommand::Mention
                 | SlashCommand::Skills
                 | SlashCommand::Import
+                | SlashCommand::Codex
                 | SlashCommand::Hooks
                 | SlashCommand::Status
                 | SlashCommand::Usage

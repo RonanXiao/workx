@@ -4,6 +4,7 @@ mod append;
 mod export;
 pub(crate) mod ledger;
 pub(crate) mod records_cla;
+pub(crate) mod records_cod;
 mod records_common;
 pub(crate) mod records_cur;
 mod title;
@@ -19,6 +20,7 @@ pub use crate::detect::sessions::ImportedSessionConnectorAttribution;
 pub use crate::detect::sessions::detect_imported_cla_session_connectors;
 pub use crate::detect::sessions::detect_imported_cla_session_connectors_by_source_path;
 pub use crate::detect::sessions::detect_recent_cla_sessions;
+pub use crate::detect::sessions::detect_recent_cod_sessions;
 pub use crate::detect::sessions::detect_recent_cur_sessions;
 pub use append::ExistingSessionAppend;
 pub use append::append_existing_session;
@@ -38,6 +40,7 @@ const SESSION_TITLE_MAX_LEN: usize = 120;
 pub(crate) enum SessionRecordFormat {
     Cla,
     Cur,
+    Cod,
 }
 
 pub struct SessionSummary {
@@ -67,6 +70,8 @@ pub enum SessionMetadataMode {
     Embedded,
     /// Use the detected migration path when the session records omit a project path.
     MigrationFallback,
+    /// Read Codex rollout records, which carry their own project path.
+    CodexRollout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +155,7 @@ fn load_importable_session(
     let (record_format, fallback_cwd) = match metadata_mode {
         SessionMetadataMode::Embedded => (SessionRecordFormat::Cla, None),
         SessionMetadataMode::MigrationFallback => (SessionRecordFormat::Cur, Some(fallback_cwd)),
+        SessionMetadataMode::CodexRollout => (SessionRecordFormat::Cod, None),
     };
     let Some((imported_session, source_content_sha256, attributed_mcp_server_ids)) =
         load_session_for_import_with_content_sha256(&source_path, record_format, fallback_cwd)?

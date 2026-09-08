@@ -5,6 +5,7 @@ use crate::sessions::ledger::load_import_ledger;
 use crate::sessions::ledger::save_import_ledger;
 use crate::sessions::now_unix_seconds;
 use crate::sessions::records_cla;
+use crate::sessions::records_cod;
 use crate::sessions::records_cur;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -84,6 +85,7 @@ pub(super) fn detect_recent_sessions(
             SessionRecordFormat::Cur => {
                 records_cur::summarize_session(&path, fallback_cwd.as_deref())
             }
+            SessionRecordFormat::Cod => records_cod::summarize_session(&path),
         };
         let Ok(Some(summary)) = summary else {
             continue;

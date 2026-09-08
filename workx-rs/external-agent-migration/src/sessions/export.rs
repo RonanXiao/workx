@@ -3,6 +3,7 @@ use super::ImportedExternalAgentSession;
 use super::MessageRole;
 use super::SessionRecordFormat;
 use super::records_cla;
+use super::records_cod;
 use super::records_cur;
 use super::summarize_for_label;
 use super::title::IMPORTED_SESSION_FALLBACK_TITLE;
@@ -44,6 +45,7 @@ pub(crate) fn load_session_for_import_with_content_sha256(
     let parsed = match record_format {
         SessionRecordFormat::Cla => records_cla::read_session_import(path)?,
         SessionRecordFormat::Cur => records_cur::read_session_import(path, fallback_cwd)?,
+        SessionRecordFormat::Cod => records_cod::read_session_import(path)?,
     };
     let Some(cwd) = parsed.cwd else {
         return Ok(None);

@@ -1,4 +1,5 @@
 use crate::ClaSource;
+use crate::CodSource;
 use crate::CurSource;
 use crate::RewriteProfile;
 use crate::detect::plugins;
@@ -7,6 +8,7 @@ use crate::detect::sessions::detect_cla_session_connectors_by_source_path;
 use crate::detect::sessions::detect_cur_session_connectors;
 use crate::detect::sessions::detect_cur_session_connectors_by_source_path;
 use crate::detect::sessions::detect_recent_cla_sessions_with_limits;
+use crate::detect::sessions::detect_recent_cod_sessions_with_limits;
 use crate::detect::sessions::detect_recent_cur_sessions_with_limits;
 use crate::model::DetectedConnectorCandidate;
 use crate::model::ExternalAgentSessionImportLimits;
@@ -53,16 +55,15 @@ pub(super) enum ExternalAgentSource {
     #[default]
     Cla,
     Cur,
+    Cod,
 }
 
 impl ExternalAgentSource {
     pub(super) fn from_migration_source(migration_source: Option<&str>) -> Self {
-        if migration_source
-            .is_some_and(|source| source.eq_ignore_ascii_case(CurSource::MIGRATION_SOURCE))
-        {
-            Self::Cur
-        } else {
-            Self::Cla
+        match migration_source {
+            Some(source) if source.eq_ignore_ascii_case(CurSource::MIGRATION_SOURCE) => Self::Cur,
+            Some(source) if source.eq_ignore_ascii_case(CodSource::MIGRATION_SOURCE) => Self::Cod,
+            _ => Self::Cla,
         }
     }
 
@@ -70,6 +71,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::CONFIG_DIR,
             Self::Cur => CurSource::CONFIG_DIR,
+            Self::Cod => CodSource::CONFIG_DIR,
         }
     }
 
@@ -77,6 +79,7 @@ impl ExternalAgentSource {
         match (self, scope) {
             // skills-cursor is Cursor-managed and only exists under the home config.
             (Self::Cur, MigrationScope::Home) => &["skills", "skills-cursor"],
+            (Self::Cod, _) => &[],
             _ => &["skills"],
         }
     }
@@ -84,7 +87,7 @@ impl ExternalAgentSource {
     pub(super) fn supports_memory(self) -> bool {
         match self {
             Self::Cla => true,
-            Self::Cur => false,
+            Self::Cur | Self::Cod => false,
         }
     }
 
@@ -93,6 +96,7 @@ impl ExternalAgentSource {
             (Self::Cla, _) => ClaSource::SETTINGS_FILE,
             (Self::Cur, MigrationScope::Home) => CurSource::HOME_CONFIG_FILE,
             (Self::Cur, MigrationScope::Repository { .. }) => CurSource::PROJECT_CONFIG_FILE,
+            (Self::Cod, _) => CodSource::SETTINGS_FILE,
         }
     }
 
@@ -103,6 +107,8 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::effective_settings(source_settings),
             Self::Cur => CurSource::effective_settings(source_settings),
+            // Codex settings already use the Workx config shape, so no migration applies.
+            Self::Cod => Ok(None),
         }
     }
 
@@ -110,6 +116,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::build_config(settings),
             Self::Cur => CurSource::build_config(settings),
+            Self::Cod => Ok(TomlValue::Table(Default::default())),
         }
     }
 
@@ -120,7 +127,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => Ok(plugins::detect_cla_plugins(&context)),
             Self::Cur if context.repo_root.is_none() => plugins::detect_cur_plugins(&context),
-            Self::Cur => Ok(None),
+            Self::Cur | Self::Cod => Ok(None),
         }
     }
 
@@ -128,6 +135,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => plugins::can_detect_cla_plugins(settings),
             Self::Cur => true,
+            Self::Cod => false,
         }
     }
 
@@ -144,6 +152,9 @@ impl ExternalAgentSource {
             Self::Cur => {
                 detect_recent_cur_sessions_with_limits(external_agent_home, workx_home, limits)
             }
+            Self::Cod => {
+                detect_recent_cod_sessions_with_limits(external_agent_home, workx_home, limits)
+            }
         }
     }
 
@@ -151,13 +162,14 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => SessionMetadataMode::Embedded,
             Self::Cur => SessionMetadataMode::MigrationFallback,
+            Self::Cod => SessionMetadataMode::CodexRollout,
         }
     }
 
     pub(super) fn connector_metadata_roots(self, external_agent_home: &Path) -> Vec<PathBuf> {
         match self {
             Self::Cla => ClaSource::connector_metadata_roots(external_agent_home),
-            Self::Cur => Vec::new(),
+            Self::Cur | Self::Cod => Vec::new(),
         }
     }
 
@@ -170,6 +182,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => detect_cla_session_connectors(sessions, connector_metadata_roots),
             Self::Cur => detect_cur_session_connectors(sessions, external_agent_home),
+            Self::Cod => Vec::new(),
         }
     }
 
@@ -186,6 +199,7 @@ impl ExternalAgentSource {
             Self::Cur => {
                 detect_cur_session_connectors_by_source_path(sessions, external_agent_home)
             }
+            Self::Cod => BTreeMap::new(),
         }
     }
 
@@ -207,6 +221,7 @@ impl ExternalAgentSource {
                 })
                 .unwrap_or_default()),
             Self::Cur => source_cur::marketplace_import_sources(external_agent_home),
+            Self::Cod => Ok(BTreeMap::new()),
         }
     }
 
@@ -220,6 +235,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::build_mcp_config(source_root, external_agent_home, settings),
             Self::Cur => CurSource::build_mcp_config(source_config_dir),
+            Self::Cod => Ok(TomlValue::Table(Default::default())),
         }
     }
 
@@ -231,6 +247,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => source_root,
             Self::Cur => source_config_dir.join("mcp.json"),
+            Self::Cod => source_config_dir.join("mcp.json"),
         }
     }
 
@@ -241,6 +258,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::repo_instruction_source_groups(repo_root),
             Self::Cur => CurSource::repo_instruction_source_groups(repo_root),
+            Self::Cod => Ok(Vec::new()),
         }
     }
 
@@ -250,7 +268,7 @@ impl ExternalAgentSource {
     ) -> io::Result<Vec<PathBuf>> {
         match self {
             Self::Cla => ClaSource::home_instruction_sources(external_agent_home),
-            Self::Cur => Ok(Vec::new()),
+            Self::Cur | Self::Cod => Ok(Vec::new()),
         }
     }
 
@@ -258,6 +276,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::read_instruction_source(path),
             Self::Cur => CurSource::read_instruction_source(path),
+            Self::Cod => Ok(String::new()),
         }
     }
 
@@ -269,6 +288,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => source_cla::import_source_commands(source_commands, target_skills),
             Self::Cur => source_cur::import_source_commands(source_commands, target_skills),
+            Self::Cod => Ok(Vec::new()),
         }
     }
 
@@ -280,6 +300,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => source_cla::count_missing_source_commands(source_commands, target_skills),
             Self::Cur => source_cur::count_missing_source_commands(source_commands, target_skills),
+            Self::Cod => Ok(0),
         }
     }
 
@@ -291,6 +312,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => source_cla::missing_source_command_names(source_commands, target_skills),
             Self::Cur => source_cur::missing_source_command_names(source_commands, target_skills),
+            Self::Cod => Ok(Vec::new()),
         }
     }
 
@@ -302,6 +324,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::import_subagents(source_agents, target_agents),
             Self::Cur => CurSource::import_subagents(source_agents, target_agents),
+            Self::Cod => Ok(Vec::new()),
         }
     }
 
@@ -313,6 +336,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::hook_event_names(source_dir, target_hooks),
             Self::Cur => CurSource::hook_event_names(source_dir, target_hooks),
+            Self::Cod => Ok(Vec::new()),
         }
     }
 
@@ -320,6 +344,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => ClaSource::import_hooks(source_dir, target_hooks),
             Self::Cur => CurSource::import_hooks(source_dir, target_hooks),
+            Self::Cod => Ok(false),
         }
     }
 
@@ -327,6 +352,7 @@ impl ExternalAgentSource {
         match self {
             Self::Cla => source_cla::REWRITE_PROFILE,
             Self::Cur => source_cur::REWRITE_PROFILE,
+            Self::Cod => CodSource::REWRITE_PROFILE,
         }
     }
 }

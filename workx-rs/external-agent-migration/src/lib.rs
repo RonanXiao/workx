@@ -75,6 +75,7 @@ pub use service::PluginImportOutcome;
 pub use service::PluginsMigration;
 pub use service::record_import_error;
 pub(crate) use source::ClaSource;
+pub(crate) use source::CodSource;
 pub(crate) use source::CurSource;
 pub(crate) use source::InstructionSourceGroup;
 #[cfg(test)]

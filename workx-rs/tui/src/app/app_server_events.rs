@@ -14,6 +14,8 @@ use crate::app_server_session::status_account_display_from_auth_mode;
 use workx_app_server_client::AppServerEvent;
 use workx_app_server_protocol::AuthMode;
 use workx_app_server_protocol::ClientRequest;
+use workx_app_server_protocol::ExternalAgentConfigImportCompletedNotification;
+use workx_app_server_protocol::ExternalAgentConfigMigrationItemType;
 use workx_app_server_protocol::RateLimitReachedType;
 use workx_app_server_protocol::RequestId;
 use workx_app_server_protocol::ServerNotification;
@@ -24,6 +26,18 @@ use workx_app_server_protocol::ThreadReadResponse;
 use workx_app_server_protocol::ThreadSource;
 use workx_protocol::ThreadId;
 use workx_protocol::protocol::SubAgentSource;
+
+/// Returns the first imported session thread id from a completed Codex chat import.
+fn codex_session_import_resume_target(
+    notification: &ExternalAgentConfigImportCompletedNotification,
+) -> Option<String> {
+    notification
+        .item_type_results
+        .iter()
+        .filter(|result| result.item_type == ExternalAgentConfigMigrationItemType::Sessions)
+        .flat_map(|result| result.successes.iter())
+        .find_map(|success| success.target.clone())
+}
 
 impl App {
     pub(super) fn refresh_mcp_startup_expected_servers_from_config(&mut self) {
@@ -239,6 +253,8 @@ impl App {
             ServerNotification::ExternalAgentConfigImportCompleted(notification) => {
                 let should_report_completion =
                     app_server_client.consume_external_agent_config_import_completion();
+                let should_resume_codex_session =
+                    app_server_client.consume_codex_session_import_pending_resume();
                 if let Err(err) = self.refresh_in_memory_config_from_disk().await {
                     tracing::warn!(
                         error = %err,
@@ -249,10 +265,19 @@ impl App {
                 self.chat_widget.refresh_plugin_mentions();
                 self.chat_widget.submit_op(AppCommand::reload_user_config());
                 self.fetch_plugins_list(app_server_client, cwd);
-                if should_report_completion {
+                let resume_thread_id = if should_resume_codex_session {
+                    codex_session_import_resume_target(notification)
+                } else {
+                    None
+                };
+                if should_report_completion && resume_thread_id.is_none() {
                     self.chat_widget.add_plain_history_lines(
                         crate::external_agent_config_migration::flow::external_agent_config_migration_finished_lines(notification),
                     );
+                }
+                if let Some(thread_id) = resume_thread_id {
+                    self.app_event_tx
+                        .send(AppEvent::ResumeSessionByIdOrName(thread_id));
                 }
                 return;
             }
@@ -564,3 +589,7 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "app_server_events_tests.rs"]
+mod tests;

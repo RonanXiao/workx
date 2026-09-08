@@ -7,6 +7,7 @@ use crate::config_values::merge_missing_mcp_servers;
 use crate::config_values::merge_missing_toml_values;
 use crate::config_values::migrated_mcp_server_names;
 use crate::count_missing_subagents;
+use crate::migration_source::ExternalAgentSource;
 use crate::migration_source::InstructionSourceGroup;
 use crate::migration_source::PluginDetectionContext;
 use crate::missing_subagent_names;
@@ -77,6 +78,35 @@ impl ExternalAgentConfigService {
         scope: &MigrationScope,
         items: &mut Vec<ExternalAgentConfigMigrationItem>,
     ) -> io::Result<()> {
+        // Codex is the sibling product this distribution was forked from: its config,
+        // skills, and rollout records already use the Workx shapes, so only chat-session
+        // imports are offered.
+        if matches!(self.source, ExternalAgentSource::Cod) {
+            if scope.is_home() {
+                let sessions = self.source.recent_sessions(
+                    &self.external_agent_home,
+                    &self.workx_home,
+                    self.session_import_limits,
+                )?;
+                if !sessions.is_empty() {
+                    items.push(ExternalAgentConfigMigrationItem {
+                        item_type: ExternalAgentConfigMigrationItemType::Sessions,
+                        description: "Import recent chats from Codex".to_string(),
+                        cwd: None,
+                        details: Some(MigrationDetails {
+                            sessions,
+                            ..Default::default()
+                        }),
+                    });
+                    emit_migration_metric(
+                        EXTERNAL_AGENT_CONFIG_DETECT_METRIC,
+                        ExternalAgentConfigMigrationItemType::Sessions,
+                        /*skills_count*/ None,
+                    );
+                }
+            }
+            return Ok(());
+        }
         let repo_root = scope.repo_root();
         let cwd = scope.cwd();
         let source_settings = self.source_settings(scope);
