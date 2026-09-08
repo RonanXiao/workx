@@ -1281,3 +1281,13 @@ pre {
   padding: 12px;
   background: var(--bg);
 }
+
+.app-shell.collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.app-shell.collapsed .sidebar {
+  overflow: hidden;
+  border-right: none;
+  padding: 0;
+}

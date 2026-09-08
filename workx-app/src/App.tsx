@@ -16,6 +16,7 @@ interface Thread {
   status?: unknown;
   cwd?: string;
   source?: string;
+  projectId?: string | null;
   turns?: TurnHistory[];
 }
 
@@ -122,6 +123,22 @@ interface PluginMarketplace {
 
 interface PluginListResponse {
   marketplaces: PluginMarketplace[];
+}
+
+interface ProjectRoot {
+  path: string;
+}
+
+interface WorkxProject {
+  id: string;
+  name: string;
+  roots: ProjectRoot[];
+  position: number;
+  recencyAt?: number | null;
+}
+
+interface ProjectListResponse {
+  data: WorkxProject[];
 }
 
 interface ScheduledTaskSummary {
@@ -369,6 +386,8 @@ function App() {
   const [plugins, setPlugins] = useState<PluginSummary[]>([]);
   const [pluginsLoading, setPluginsLoading] = useState(false);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskSummary[]>([]);
+  const [projects, setProjects] = useState<WorkxProject[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
@@ -406,6 +425,16 @@ function App() {
   }, [threadSearch, threads]);
 
   const projectGroups = useMemo(() => {
+    if (projects.length > 0) {
+      return projects
+        .map((project) => ({
+          project,
+          count: threads.filter((thread) => thread.projectId === project.id).length,
+          root: project.roots[0]?.path ?? "",
+        }))
+        .sort((a, b) => a.project.position - b.project.position);
+    }
+
     const byCwd = new Map<string, { cwd: string; count: number; updatedAt: number }>();
     for (const thread of threads) {
       if (!thread.cwd) continue;
@@ -416,8 +445,17 @@ function App() {
         updatedAt: Math.max(existing?.updatedAt ?? 0, thread.updatedAt ?? 0),
       });
     }
-    return [...byCwd.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [threads]);
+    return [...byCwd.values()].sort((a, b) => b.updatedAt - a.updatedAt).map((entry) => ({
+      project: {
+        id: `cwd:${entry.cwd}`,
+        name: projectNameFromCwd(entry.cwd),
+        roots: [{ path: entry.cwd }],
+        position: 0,
+      },
+      count: entry.count,
+      root: entry.cwd,
+    }));
+  }, [projects, threads]);
 
   const recents = useMemo(
     () =>
@@ -750,6 +788,8 @@ function App() {
     setSelectedEffort((current) =>
       current ?? defaultModel?.defaultReasoningEffort ?? null,
     );
+
+    await loadProjects();
   }
 
   useEffect(() => {
@@ -824,6 +864,7 @@ function App() {
         threadId: thread.id,
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
+        approvalPolicy: alwaysAllow ? "never" : "on-request",
       });
       setActiveThread(response.thread);
       setCurrentDir(response.thread.cwd ?? null);
@@ -851,6 +892,7 @@ function App() {
         cwd,
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
+        approvalPolicy: alwaysAllow ? "never" : "on-request",
       });
       setActiveThread(response.thread);
       setCurrentDir(response.thread.cwd ?? null);
@@ -870,6 +912,7 @@ function App() {
       const response = await client.request<ThreadStartResponse>("thread/start", {
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
+        approvalPolicy: alwaysAllow ? "never" : "on-request",
       });
       setActiveThread(response.thread);
       setCurrentDir(response.thread.cwd ?? null);
@@ -898,6 +941,7 @@ function App() {
         const startResponse = await client.request<ThreadStartResponse>("thread/start", {
           ...(selectedModel ? { model: selectedModel } : {}),
           ...(selectedProvider ? { modelProvider: selectedProvider } : {}),
+          approvalPolicy: alwaysAllow ? "never" : "on-request",
         });
         thread = startResponse.thread;
         setActiveThread(thread);
@@ -921,6 +965,7 @@ function App() {
         input: [{ type: "text", text }],
         ...(selectedModel ? { model: selectedModel } : {}),
         ...(selectedEffort ? { effort: selectedEffort } : {}),
+        approvalPolicy: alwaysAllow ? "never" : "on-request",
       });
 
       setActiveTurnId(response.turn.id);
@@ -929,6 +974,15 @@ function App() {
       setError(String(reason));
     } finally {
       setSending(false);
+    }
+  }
+
+  async function loadProjects(): Promise<void> {
+    try {
+      const response = await client.request<ProjectListResponse>("project/list", { limit: 100 });
+      setProjects(response.data);
+    } catch {
+      // project/list is experimental; fall back to cwd-based grouping below.
     }
   }
 
@@ -1069,7 +1123,7 @@ function App() {
   const activeTitle = activeThread?.name || activeThread?.preview || "New Workx chat";
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${sidebarCollapsed ? "collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-top">
           <button className="sidebar-collapse" title="Collapse sidebar">◀</button>
@@ -1150,15 +1204,17 @@ function App() {
           )}
           {projectGroups.map((group) => (
             <button
-              key={group.cwd}
+              key={group.project.id}
               className="section-item"
               onClick={() => {
-                void loadDirectory(group.cwd);
-                openRight("files");
+                if (group.root) {
+                  void loadDirectory(group.root);
+                  openRight("files");
+                }
               }}
             >
               <span className="nav-icon">📁</span>
-              <span className="project-name">{projectNameFromCwd(group.cwd)}</span>
+              <span className="project-name">{group.project.name}</span>
               <span className="section-count">{group.count}</span>
             </button>
           ))}
@@ -1261,9 +1317,25 @@ function App() {
             {activeTurnId && (
               <button className="icon-button" onClick={() => void interruptTurn()}>Stop</button>
             )}
-            <button className="icon-button" title="Share">↗ Share</button>
-            <button className="icon-button" title="Collapse sidebar">⊞</button>
-            <button className="icon-button" title="More">···</button>
+            <button
+              className="icon-button"
+              title="Share thread"
+              onClick={() => {
+                if (activeThread) void navigator.clipboard.writeText(activeThread.id);
+              }}
+            >
+              ↗ Share
+            </button>
+            <button
+              className="icon-button"
+              title="Collapse sidebar"
+              onClick={() => setSidebarCollapsed((value) => !value)}
+            >
+              ⊞
+            </button>
+            <button className="icon-button" title="More" onClick={() => setSettingsOpen(true)}>
+              ···
+            </button>
             <button className="icon-button" onClick={() => openRight("events")}>Events</button>
             <button className="icon-button" onClick={() => openRight("approvals")}>
               Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
