@@ -341,6 +341,7 @@ function App() {
   const [pluginsLoading, setPluginsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
   const [mode, setMode] = useState<"chat" | "work">("chat");
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
@@ -910,6 +911,30 @@ function App() {
     setRightOpen(true);
   }
 
+  async function archiveThread(thread: Thread): Promise<void> {
+    try {
+      await client.request("thread/archive", { threadId: thread.id });
+      setThreads((current) => current.filter((item) => item.id !== thread.id));
+      if (activeThread?.id === thread.id) setActiveThread(null);
+      setThreadMenuId(null);
+      pushEvent("system", "thread/archive", thread.id);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function deleteThread(thread: Thread): Promise<void> {
+    try {
+      await client.request("thread/delete", { threadId: thread.id });
+      setThreads((current) => current.filter((item) => item.id !== thread.id));
+      if (activeThread?.id === thread.id) setActiveThread(null);
+      setThreadMenuId(null);
+      pushEvent("system", "thread/delete", thread.id);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
   function renderMessage(message: ConversationMessage) {
     const body = message.text || "(empty)";
     if (message.role === "user") {
@@ -1011,16 +1036,47 @@ function App() {
             {booting && <div className="muted">Starting Workx…</div>}
             {!booting && threads.length === 0 && <div className="muted">No threads yet</div>}
             {visibleThreads.map((thread) => (
-              <button
-                key={thread.id}
-                className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
-                onClick={() => void selectThread(thread)}
-              >
-                <span className="thread-title">{thread.name || thread.preview || "Untitled"}</span>
-                <span className="thread-meta">
-                  {formatThreadStatus(thread.status)} · {thread.cwd || "no cwd"}
-                </span>
-              </button>
+              <div key={thread.id} className="thread-row">
+                <button
+                  className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
+                  onClick={() => {
+                    void selectThread(thread);
+                    setThreadMenuId(null);
+                  }}
+                >
+                  <span className="thread-title">{thread.name || thread.preview || "Untitled"}</span>
+                  <span className="thread-meta">
+                    {formatThreadStatus(thread.status)} · {thread.cwd || "no cwd"}
+                  </span>
+                </button>
+                <button
+                  className="thread-menu-trigger"
+                  title="More actions"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setThreadMenuId((current) => (current === thread.id ? null : thread.id));
+                  }}
+                >
+                  ⋯
+                </button>
+                {threadMenuId === thread.id && (
+                  <div className="thread-context-menu">
+                    <button
+                      onClick={() => {
+                        if (thread.cwd) {
+                          void loadDirectory(thread.cwd);
+                          openRight("files");
+                        }
+                        setThreadMenuId(null);
+                      }}
+                    >
+                      Open folder
+                    </button>
+                    <button onClick={() => void archiveThread(thread)}>Archive</button>
+                    <button onClick={() => void deleteThread(thread)}>Delete</button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
