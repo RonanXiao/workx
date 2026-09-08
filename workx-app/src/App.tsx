@@ -358,6 +358,7 @@ function App() {
   const [rightOpen, setRightOpen] = useState(false);
   const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const [alwaysAllow, setAlwaysAllow] = useState(false);
   const [mode, setMode] = useState<"chat" | "work">("chat");
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
@@ -1211,6 +1212,9 @@ function App() {
             {activeTurnId && (
               <button className="icon-button" onClick={() => void interruptTurn()}>Stop</button>
             )}
+            <button className="icon-button" title="Share">↗ Share</button>
+            <button className="icon-button" title="Collapse sidebar">⊞</button>
+            <button className="icon-button" title="More">···</button>
             <button className="icon-button" onClick={() => openRight("events")}>Events</button>
             <button className="icon-button" onClick={() => openRight("approvals")}>
               Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
@@ -1264,8 +1268,13 @@ function App() {
                   rows={1}
                   disabled={booting || sending}
                 />
-                <button type="button" className="composer-approve" title="Ask for approval">
-                  🧭 Ask for approval
+                <button
+                  type="button"
+                  className={`composer-approve ${alwaysAllow ? "full-access" : ""}`}
+                  title="Toggle approval mode"
+                  onClick={() => setAlwaysAllow((value) => !value)}
+                >
+                  {alwaysAllow ? "⛔ Full access" : "🧭 Ask for approval"}
                 </button>
                 <select
                   className="composer-model"
@@ -1415,12 +1424,14 @@ function App() {
                 <div className="plugins-pane">
                   <div className="plugins-header">
                     <strong>Plugins</strong>
+                    <span className="muted">{plugins.length} found</span>
                     <button onClick={() => void loadPlugins()} disabled={pluginsLoading}>
                       {pluginsLoading ? "Loading…" : "Refresh"}
                     </button>
                   </div>
                   {pluginsLoading && <div className="muted">Loading plugins…</div>}
                   {!pluginsLoading && plugins.length === 0 && <div className="muted">No plugins found</div>}
+                  <div className="plugins-grid">
                   {plugins.map((plugin) => (
                     <div key={plugin.id} className="plugin-card">
                       <div className="plugin-icon">
@@ -1440,6 +1451,7 @@ function App() {
                       </div>
                     </div>
                   ))}
+                  </div>
                 </div>
               )}
               {rightTab === "pullRequests" && (

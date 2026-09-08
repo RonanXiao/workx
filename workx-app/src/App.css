@@ -1250,3 +1250,19 @@ pre {
 .status-icon.error {
   background: #ef4444;
 }
+
+.plugins-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.plugin-card {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-approve.full-access {
+  color: #f97316;
+  font-weight: 600;
+}
