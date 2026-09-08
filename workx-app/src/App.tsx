@@ -783,13 +783,25 @@ function App() {
     setStatus(nextStatus);
     pushEvent("system", "app-server started", nextStatus.binary ?? "unknown binary");
 
-    const initialized = await client.request<InitializeResponse>("initialize", {
-      clientInfo: {
-        name: "workx-desktop",
-        version: "0.1.0",
-      },
-      capabilities: { experimentalApi: true },
-    });
+    let initialized: InitializeResponse;
+    try {
+      initialized = await client.request<InitializeResponse>("initialize", {
+        clientInfo: {
+          name: "workx-desktop",
+          version: "0.1.0",
+        },
+        capabilities: { experimentalApi: true },
+      });
+    } catch (reason) {
+      // Vite hot reload can reconnect while app-server stays initialized.
+      if (!String(reason).includes("Already initialized")) throw reason;
+      initialized = {
+        userAgent: "workx-desktop",
+        workxHome: "",
+        platformFamily: "",
+        platformOs: "",
+      };
+    }
     await client.notify("initialized");
 
     pushEvent(
@@ -1407,7 +1419,7 @@ function App() {
                 if (activeThread) void navigator.clipboard.writeText(activeThread.id);
               }}
             >
-              ↗ Share
+              ↗
             </button>
             <button
               className="icon-button"
@@ -1419,12 +1431,12 @@ function App() {
             <button className="icon-button" title="More" onClick={() => setSettingsOpen(true)}>
               ···
             </button>
-            <button className="icon-button" onClick={() => openRight("events")}>Events</button>
-            <button className="icon-button" onClick={() => openRight("approvals")}>
-              Approvals{approvals.length > 0 ? ` (${approvals.length})` : ""}
+            <button className="icon-button" title="Events" onClick={() => openRight("events")}>📋</button>
+            <button className="icon-button" title="Approvals" onClick={() => openRight("approvals")}>
+              {approvals.length > 0 ? `⏳${approvals.length}` : "⏳"}
             </button>
-            <button className="icon-button" onClick={() => openRight("terminal")}>Term</button>
-            <button className="icon-button" onClick={() => openRight("files")}>Files</button>
+            <button className="icon-button" title="Terminal" onClick={() => openRight("terminal")}>▸_</button>
+            <button className="icon-button" title="Files" onClick={() => openRight("files")}>📁</button>
           </div>
         </header>
 

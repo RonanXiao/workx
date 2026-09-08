@@ -1347,3 +1347,265 @@ pre {
 .project-row:hover .thread-menu-trigger {
   opacity: 1;
 }
+
+/* ===== Codex polish ===== */
+:root {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(0, 0, 0, 0.06);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f9f9f9;
+  --surface-2: #efefef;
+  --border: #e7e7e7;
+  --text: #101010;
+  --muted: #6f6f6f;
+  --accent: #101010;
+  --msg-assistant: #ffffff;
+  --msg-user: #f2f2f2;
+  --msg-tool: #fafafa;
+  --terminal-bg: #0b0b0b;
+  --terminal-text: #e6e6e6;
+  --approval-bg: #fff8eb;
+  --approval-border: #f1c40f;
+  --connection-bg: #fdecec;
+  --link-color: #101010;
+}
+
+.app-shell {
+  grid-template-columns: 268px minmax(0, 1fr);
+  background: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-top {
+  padding: 20px 14px 8px;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.sidebar-nav {
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+.nav-item,
+.section-item {
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.nav-icon {
+  font-size: 15px;
+  width: 22px;
+}
+
+.sidebar-section {
+  padding: 6px 8px;
+}
+
+.sidebar-section-title {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.thread-item {
+  padding: 9px 12px;
+  border-radius: 10px;
+}
+
+.thread-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.thread-meta {
+  font-size: 12px;
+}
+
+.thread-time {
+  color: var(--muted);
+}
+
+.topbar {
+  height: 60px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mode-pill {
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.mode-pill button {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mode-pill button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.icon-button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.thread-hero {
+  padding: 32px;
+}
+
+.hero-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.hero-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.composer-stack {
+  width: min(780px, 100%);
+}
+
+.choose-project {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+
+.composer {
+  border: 1.6px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg);
+  box-shadow: var(--shadow-soft);
+  padding: 10px 12px;
+}
+
+.composer textarea {
+  font-size: 15px;
+}
+
+.composer-approve {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.composer-send {
+  width: 30px;
+  height: 30px;
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.message-list {
+  width: min(720px, 100%);
+  padding: 24px 16px;
+  gap: 18px;
+}
+
+.user-bubble {
+  border-radius: 18px;
+  background: var(--msg-user);
+  padding: 10px 16px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.assistant-text {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.message.tool-card,
+.message.system-card {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--msg-tool);
+  overflow: hidden;
+}
+
+.message.tool-card summary,
+.message.system-card summary {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 10px;
+}
+
+.message.tool-card pre,
+.message.system-card pre {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.right-pane {
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+}
+
+.right-pane-header {
+  padding: 14px;
+}
+
+.plugin-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: var(--shadow-soft);
+  padding: 14px;
+}
+
+.settings-dialog {
+  border-radius: 20px;
+  box-shadow: var(--shadow-pop);
+  border: 1px solid var(--border);
+}
