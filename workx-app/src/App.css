@@ -1291,3 +1291,28 @@ pre {
   border-right: none;
   padding: 0;
 }
+
+.page-view {
+  flex: 1;
+  overflow: auto;
+  padding: 18px 22px;
+  width: 100%;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.page-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.plugins-pane.full,
+.scheduled-pane.full {
+  max-width: 960px;
+  padding: 0;
+}

@@ -388,6 +388,7 @@ function App() {
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTaskSummary[]>([]);
   const [projects, setProjects] = useState<WorkxProject[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [view, setView] = useState<"chat" | "plugins" | "scheduled">("chat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
@@ -398,7 +399,7 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "plugins" | "scheduled" | "status">("events");
+  const [rightTab, setRightTab] = useState<"events" | "approvals" | "terminal" | "files" | "status">("events");
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [terminalProcessId, setTerminalProcessId] = useState<string | null>(null);
   const [terminalOutput, setTerminalOutput] = useState("");
@@ -1178,7 +1179,7 @@ function App() {
           <button
             className="nav-item"
             onClick={() => {
-              openRight("scheduled");
+              setView("scheduled");
               void loadScheduled();
             }}
           >
@@ -1187,7 +1188,7 @@ function App() {
           <button
             className="nav-item"
             onClick={() => {
-              openRight("plugins");
+              setView("plugins");
               void loadPlugins();
             }}
           >
@@ -1346,6 +1347,68 @@ function App() {
         </header>
 
         <div className={rightOpen ? "content with-right" : "content"}>
+          {view !== "chat" ? (
+            <div className="page-view">
+              <div className="page-header">
+                <button onClick={() => setView("chat")}>← Back</button>
+                <h2>{view === "plugins" ? "Plugins" : "Scheduled"}</h2>
+              </div>
+              {view === "plugins" && (
+                <div className="plugins-pane full">
+                  <div className="plugins-header">
+                    <strong>All plugins</strong>
+                    <span className="muted">{plugins.length} found</span>
+                    <button onClick={() => void loadPlugins()} disabled={pluginsLoading}>
+                      {pluginsLoading ? "Loading…" : "Refresh"}
+                    </button>
+                  </div>
+                  {pluginsLoading && <div className="muted">Loading plugins…</div>}
+                  {!pluginsLoading && plugins.length === 0 && <div className="muted">No plugins found</div>}
+                  <div className="plugins-grid">
+                    {plugins.map((plugin) => (
+                      <div key={plugin.id} className="plugin-card">
+                        <div className="plugin-icon">
+                          {plugin.interface?.logoUrl || plugin.interface?.logoUrlDark ? (
+                            <img src={plugin.interface.logoUrl || plugin.interface.logoUrlDark || ""} alt="" />
+                          ) : (
+                            "🧩"
+                          )}
+                        </div>
+                        <div className="plugin-body">
+                          <div className="plugin-title">{plugin.interface?.displayName || plugin.name}</div>
+                          <div className="plugin-desc">{plugin.interface?.shortDescription || plugin.name}</div>
+                          <div className="plugin-meta">
+                            <span>{plugin.enabled ? "Enabled" : "Disabled"}</span>
+                            <span>· {plugin.installed ? "Installed" : "Available"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {view === "scheduled" && (
+                <div className="scheduled-pane full">
+                  <div className="plugins-header">
+                    <strong>Scheduled tasks</strong>
+                    <span className="muted">{scheduledTasks.length} tasks</span>
+                    <button onClick={() => void loadScheduled()}>Refresh</button>
+                  </div>
+                  {scheduledTasks.length === 0 && (
+                    <div className="muted">No scheduled tasks from installed plugins.</div>
+                  )}
+                  {scheduledTasks.map((task) => (
+                    <div key={task.key} className="scheduled-card">
+                      <div className="plugin-title">{task.name}</div>
+                      <div className="plugin-desc">{task.prompt}</div>
+                      <div className="plugin-meta">{JSON.stringify(task.schedule ?? "")}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
           <div className="chat-pane">
             <div className="chat-body">
               {error && <div className="error-banner">{error}</div>}
@@ -1541,59 +1604,6 @@ function App() {
                   )}
                 </div>
               )}
-              {rightTab === "plugins" && (
-                <div className="plugins-pane">
-                  <div className="plugins-header">
-                    <strong>Plugins</strong>
-                    <span className="muted">{plugins.length} found</span>
-                    <button onClick={() => void loadPlugins()} disabled={pluginsLoading}>
-                      {pluginsLoading ? "Loading…" : "Refresh"}
-                    </button>
-                  </div>
-                  {pluginsLoading && <div className="muted">Loading plugins…</div>}
-                  {!pluginsLoading && plugins.length === 0 && <div className="muted">No plugins found</div>}
-                  <div className="plugins-grid">
-                  {plugins.map((plugin) => (
-                    <div key={plugin.id} className="plugin-card">
-                      <div className="plugin-icon">
-                        {plugin.interface?.logoUrl || plugin.interface?.logoUrlDark ? (
-                          <img src={plugin.interface.logoUrl || plugin.interface.logoUrlDark || ""} alt="" />
-                        ) : (
-                          "🧩"
-                        )}
-                      </div>
-                      <div className="plugin-body">
-                        <div className="plugin-title">{plugin.interface?.displayName || plugin.name}</div>
-                        <div className="plugin-desc">{plugin.interface?.shortDescription || plugin.name}</div>
-                        <div className="plugin-meta">
-                          <span>{plugin.enabled ? "Enabled" : "Disabled"}</span>
-                          <span>· {plugin.installed ? "Installed" : "Available"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  </div>
-                </div>
-              )}
-              {rightTab === "scheduled" && (
-                <div className="scheduled-pane">
-                  <div className="plugins-header">
-                    <strong>Scheduled</strong>
-                    <span className="muted">{scheduledTasks.length} tasks</span>
-                    <button onClick={() => void loadScheduled()}>Refresh</button>
-                  </div>
-                  {scheduledTasks.length === 0 && (
-                    <div className="muted">No scheduled tasks from installed plugins.</div>
-                  )}
-                  {scheduledTasks.map((task) => (
-                    <div key={task.key} className="scheduled-card">
-                      <div className="plugin-title">{task.name}</div>
-                      <div className="plugin-desc">{task.prompt}</div>
-                      <div className="plugin-meta">{JSON.stringify(task.schedule ?? "")}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
               {rightTab === "status" && (
                 <div className="status-pane">
                   <h2>Connection</h2>
@@ -1607,6 +1617,8 @@ function App() {
                 </div>
               )}
             </aside>
+          )}
+            </>
           )}
         </div>
       </section>
