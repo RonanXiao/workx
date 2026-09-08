@@ -177,6 +177,21 @@ function formatThreadStatus(status: unknown): string {
   return "idle";
 }
 
+function projectNameFromCwd(cwd: string): string {
+  const trimmed = cwd.replace(/[\\/]+$/, "");
+  const parts = trimmed.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || cwd;
+}
+
+function formatTimeAgo(updatedAt?: number): string {
+  if (!updatedAt) return "";
+  const delta = Math.max(0, Date.now() / 1000 - updatedAt);
+  if (delta < 60) return "now";
+  if (delta < 3600) return `${Math.floor(delta / 60)}m`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h`;
+  return `${Math.floor(delta / 86400)}d`;
+}
+
 function toolIcon(label?: string): string {
   if (!label) return "🧩";
   if (label.includes("command")) return "🖥️";
@@ -342,6 +357,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [threadMenuId, setThreadMenuId] = useState<string | null>(null);
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [mode, setMode] = useState<"chat" | "work">("chat");
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
@@ -372,6 +388,26 @@ function App() {
       return title.toLowerCase().includes(term) || thread.id.toLowerCase().includes(term);
     });
   }, [threadSearch, threads]);
+
+  const projectGroups = useMemo(() => {
+    const byCwd = new Map<string, { cwd: string; count: number; updatedAt: number }>();
+    for (const thread of threads) {
+      if (!thread.cwd) continue;
+      const existing = byCwd.get(thread.cwd);
+      byCwd.set(thread.cwd, {
+        cwd: thread.cwd,
+        count: (existing?.count ?? 0) + 1,
+        updatedAt: Math.max(existing?.updatedAt ?? 0, thread.updatedAt ?? 0),
+      });
+    }
+    return [...byCwd.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [threads]);
+
+  const recents = useMemo(
+    () =>
+      [...visibleThreads].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)),
+    [visibleThreads],
+  );
 
   function pushEvent(
     kind: EventKind,
@@ -958,6 +994,7 @@ function App() {
           <summary>
             <span className="tool-icon">{toolIcon(message.label)}</span>
             <span>{message.label || "Tool"}</span>
+            <span className={`status-icon ${message.status}`} />
             <span className="muted">{message.status}</span>
           </summary>
           <pre>{body}</pre>
@@ -989,7 +1026,48 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-top">
           <button className="sidebar-collapse" title="Collapse sidebar">◀</button>
-          <h1 className="brand">Workx</h1>
+          <div className="brand-wrap">
+            <button className="brand-button" onClick={() => setBrandMenuOpen((value) => !value)}>
+              <span className="brand">Workx</span>
+              <span className="brand-chevron">▾</span>
+            </button>
+            {brandMenuOpen && (
+              <div className="brand-menu">
+                <button
+                  onClick={() => {
+                    void startNewThread();
+                    setBrandMenuOpen(false);
+                  }}
+                >
+                  New chat
+                </button>
+                <button
+                  onClick={() => {
+                    void openFolder();
+                    setBrandMenuOpen(false);
+                  }}
+                >
+                  Open folder
+                </button>
+                <button
+                  onClick={() => {
+                    setSettingsOpen(true);
+                    setBrandMenuOpen(false);
+                  }}
+                >
+                  Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setTheme(theme === "dark" ? "light" : "dark");
+                    setBrandMenuOpen(false);
+                  }}
+                >
+                  Switch to {theme === "dark" ? "light" : "dark"} theme
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <nav className="sidebar-nav">
@@ -1015,14 +1093,30 @@ function App() {
 
         <div className="sidebar-section">
           <div className="sidebar-section-title">Projects</div>
-          <button className="section-item" onClick={() => void openFolder()} disabled={booting}>
-            <span className="nav-icon">📁</span> Codex
-          </button>
+          {projectGroups.length === 0 && (
+            <button className="section-item" onClick={() => void openFolder()} disabled={booting}>
+              <span className="nav-icon">📁</span> Open folder
+            </button>
+          )}
+          {projectGroups.map((group) => (
+            <button
+              key={group.cwd}
+              className="section-item"
+              onClick={() => {
+                void loadDirectory(group.cwd);
+                openRight("files");
+              }}
+            >
+              <span className="nav-icon">📁</span>
+              <span className="project-name">{projectNameFromCwd(group.cwd)}</span>
+              <span className="section-count">{group.count}</span>
+            </button>
+          ))}
         </div>
 
         <div className="sidebar-section chats">
           <div className="sidebar-section-title">
-            <span>Chats</span>
+            <span>Recents</span>
             <button className="new-chat-small" onClick={startNewThread} disabled={booting}>＋</button>
           </div>
           <input
@@ -1035,7 +1129,7 @@ function App() {
           <div className="thread-list">
             {booting && <div className="muted">Starting Workx…</div>}
             {!booting && threads.length === 0 && <div className="muted">No threads yet</div>}
-            {visibleThreads.map((thread) => (
+            {recents.map((thread) => (
               <div key={thread.id} className="thread-row">
                 <button
                   className={`thread-item ${activeThread?.id === thread.id ? "active" : ""}`}
@@ -1048,6 +1142,7 @@ function App() {
                   <span className="thread-meta">
                     {formatThreadStatus(thread.status)} · {thread.cwd || "no cwd"}
                   </span>
+                  <span className="thread-time">{formatTimeAgo(thread.updatedAt)}</span>
                 </button>
                 <button
                   className="thread-menu-trigger"

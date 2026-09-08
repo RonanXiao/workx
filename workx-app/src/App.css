@@ -1145,3 +1145,108 @@ pre {
 .thread-context-menu button:hover {
   background: var(--surface-2);
 }
+
+.brand-wrap {
+  position: relative;
+}
+
+.brand-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.brand-button:hover {
+  background: var(--surface-2);
+}
+
+.brand-chevron {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.brand-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+}
+
+.brand-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.brand-menu button:hover {
+  background: var(--surface-2);
+}
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.thread-time {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.message.tool-card summary::after,
+.message.system-card summary::after {
+  content: "▸";
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.message.tool-card[open] summary::after,
+.message.system-card[open] summary::after {
+  content: "▾";
+}
+
+.status-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.status-icon.done {
+  background: #22c55e;
+}
+
+.status-icon.streaming {
+  background: var(--accent);
+}
+
+.status-icon.error {
+  background: #ef4444;
+}
