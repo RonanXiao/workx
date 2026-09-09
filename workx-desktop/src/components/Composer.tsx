@@ -1,20 +1,4 @@
-import {
-  AlertTriangle,
-  ArrowUp,
-  Check,
-  ChevronDown,
-  Cpu,
-  FileText,
-  MessageSquare,
-  Mic,
-  Plug,
-  Plus,
-  Puzzle,
-  Settings2,
-  Sparkles,
-  Square,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, ArrowUp, Check, ChevronDown, FileText, MessageSquare, Mic, Plug, Plus, Puzzle, Sparkles, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { FuzzyFileSearchResult } from '@protocol/FuzzyFileSearchResult';
@@ -689,9 +673,8 @@ export function Composer({
                       setProviderOpen(false);
                       onManageProviders();
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-hover"
+                    className="w-full rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-hover"
                   >
-                    <Settings2 className="size-4 shrink-0 text-fg-secondary" strokeWidth={1.75} />
                     {t('composer.providerManager')}
                   </button>
                 </div>
@@ -741,50 +724,50 @@ export function Composer({
                     ) : null}
                     {filteredModels.map((model) => (
                       <button
-                        key={'listed:' + model.id}
+                        key={model.id}
                         type="button"
                         onClick={() => {
                           onModelChange(model.id);
                           closeModelMenu();
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-hover"
+                        className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-hover"
                       >
-                        <Cpu className="size-4 shrink-0 text-fg-secondary" strokeWidth={1.75} />
+                        <Check
+                          className={cn(
+                            'mt-0.5 size-3.5 shrink-0',
+                            model.id === selectedModelId ? 'opacity-100' : 'opacity-0',
+                          )}
+                          strokeWidth={2}
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px]">{model.displayName}</span>
                           {model.description ? (
-                            <span className="block truncate text-[12px] text-fg-tertiary">
+                            <span className="mt-0.5 block truncate text-[12px] leading-snug text-fg-tertiary">
                               {model.description}
                             </span>
                           ) : null}
                         </span>
-                        {model.id === selectedModelId ? (
-                          <Check
-                            className="size-3.5 shrink-0 text-fg-secondary"
-                            strokeWidth={2}
-                          />
-                        ) : null}
                       </button>
                     ))}
                     {customModels.map((model) => (
                       <button
-                        key={'custom:' + model.id}
+                        key={model.id}
                         type="button"
                         onClick={() => {
                           onModelChange(model.id);
                           closeModelMenu();
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-hover"
+                        className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-hover"
                       >
-                        <Sparkles
-                          className="size-4 shrink-0 text-fg-secondary"
-                          strokeWidth={1.75}
+                        <Check
+                          className={cn(
+                            'mt-0.5 size-3.5 shrink-0',
+                            model.id === selectedModelId ? 'opacity-100' : 'opacity-0',
+                          )}
+                          strokeWidth={2}
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px]">{model.id}</span>
-                          <span className="block truncate text-[12px] text-fg-tertiary">
-                            {t('settings.modelsCustom')}
-                          </span>
                         </span>
                         <span
                           role="button"
@@ -795,7 +778,7 @@ export function Composer({
                             event.stopPropagation();
                             removeCustomModelEntry(model.id);
                           }}
-                          className="flex size-6 shrink-0 items-center justify-center rounded-md text-fg-tertiary hover:bg-hover hover:text-fg"
+                          className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-fg-tertiary hover:bg-hover hover:text-fg"
                         >
                           <X className="size-3.5" strokeWidth={2} />
                         </span>
@@ -805,12 +788,9 @@ export function Composer({
                       <button
                         type="button"
                         onClick={() => void pickCustomFromQuery()}
-                        className="flex w-full items-center gap-2.5 rounded-lg bg-active px-2.5 py-1.5 text-left"
+                        className="w-full rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-hover"
                       >
-                        <Plus className="size-4 shrink-0 text-fg-secondary" strokeWidth={1.75} />
-                        <span className="min-w-0 flex-1 truncate text-[13px]">
-                          {t('composer.customModelRow', { query: normalizedModelQuery })}
-                        </span>
+                        {t('composer.customModelRow', { query: normalizedModelQuery })}
                       </button>
                     ) : null}
                   </div>

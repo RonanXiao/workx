@@ -253,7 +253,7 @@ export function SettingsDialog({
                       </span>
                       <span className="flex shrink-0 items-center gap-0.5">
                         {isActive ? (
-                          <span className="rounded-full bg-active px-2 py-0.5 text-[11px] font-medium">
+                          <span className="shrink-0 text-[13px] text-fg-secondary">
                             {t('settings.providerActive')}
                           </span>
                         ) : (
@@ -306,7 +306,14 @@ export function SettingsDialog({
                     }}
                     className="h-9 w-full rounded-lg border border-line bg-app px-2.5 text-[14px] outline-none focus:border-line-strong"
                   >
-                    {models.length > 0 ? (
+                    {models.length > 0 && customModels.length === 0
+                      ? models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.displayName}
+                          </option>
+                        ))
+                      : null}
+                    {customModels.length > 0 ? (
                       <optgroup label={t('settings.modelsListed')}>
                         {models.map((model) => (
                           <option key={model.id} value={model.id}>
