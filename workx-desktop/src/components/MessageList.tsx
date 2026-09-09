@@ -239,6 +239,11 @@ function AssistantTurn({
 
 function ActivityRow({ activity }: { activity: Activity }) {
   const Icon = ACTIVITY_ICONS[activity.icon];
+  const hasBody = Boolean(
+    (activity.output && activity.output.trim()) ||
+      (activity.reasoning && activity.reasoning.trim()),
+  );
+  const [open, setOpen] = useState(false);
   return (
     <div
       className={cn(
@@ -253,8 +258,38 @@ function ActivityRow({ activity }: { activity: Activity }) {
         )}
         strokeWidth={1.75}
       />
-      <span className="min-w-0 break-words font-mono text-[13px]">{activity.label}</span>
-      {activity.status ? (
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={hasBody ? () => setOpen((value) => !value) : undefined}
+          className={cn(
+            'block min-w-0 break-words text-left font-mono text-[13px]',
+            hasBody && 'cursor-pointer hover:text-fg',
+          )}
+        >
+          {activity.label}
+        </button>
+        {open && activity.reasoning ? (
+          <pre className="mt-1 whitespace-pre-wrap break-words rounded-md bg-hover px-2.5 py-2 text-[12px] text-fg-secondary">
+            {activity.reasoning}
+          </pre>
+        ) : null}
+        {open && activity.output && activity.output.trim() ? (
+          <pre className="mt-1 whitespace-pre-wrap break-words rounded-md bg-hover px-2.5 py-2 text-[12px] text-fg-secondary">
+            {activity.output}
+          </pre>
+        ) : null}
+      </div>
+      {activity.exitCode != null ? (
+        <span
+          className={cn(
+            'ml-auto shrink-0 text-[12px]',
+            activity.exitCode === 0 ? 'text-fg-tertiary' : 'text-danger',
+          )}
+        >
+          exit {activity.exitCode}
+        </span>
+      ) : activity.status ? (
         <span
           className={cn(
             'ml-auto shrink-0 text-[12px]',
