@@ -39,6 +39,17 @@ import type { WarningNotification } from '@protocol/v2/WarningNotification';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { INIT_AGENTS_PROMPT, type ComposerMenuBinding } from '../data/composerMenu';
+import {
+  buildProviderSummaries,
+  registryIsEmpty,
+  registryToCustomModels,
+  type CustomModel,
+  type CustomModelRegistry,
+  type ProviderConfigEntry,
+  type ProviderSummary,
+  withRegistryCustomModel,
+  withoutRegistryCustomModel,
+} from '../data/providers';
 import { PERMISSION_MODES, type PermissionMode } from '../data/workspace';
 import { useI18n } from '../lib/i18n';
 import {
@@ -49,14 +60,6 @@ import {
   type ThreadSearchResponse,
 } from './protocolExtensions';
 import { buildTranscript, type TranscriptEntry, type TurnView } from './transcript';
-
-const BUILTIN_MODEL_PROVIDER_IDS = [
-  'openai',
-  'amazon-bedrock',
-  'amazon-bedrock-runtime',
-  'ollama',
-  'lmstudio',
-];
 
 export interface ApprovalRequest {
   id: string | number;
@@ -82,9 +85,22 @@ export interface WorkxController {
   selectedModelId: string | null;
   selectModel: (id: string) => void;
   providerId: string | null;
-  providers: string[];
+  providers: ProviderSummary[];
+  /** model_providers.<id> entries configured in config.toml. */
+  configuredProviders: Record<string, ProviderConfigEntry>;
+  /** Custom models registered for the active provider. */
+  customModels: CustomModel[];
   providerBusy: boolean;
   selectProvider: (id: string) => Promise<void>;
+  saveProvider: (params: {
+    id: string;
+    entry: ProviderConfigEntry;
+    activate: boolean;
+    defaultModel?: string | null;
+  }) => Promise<void>;
+  deleteProvider: (id: string) => Promise<void>;
+  addCustomModel: (id: string, label?: string) => Promise<void>;
+  removeCustomModel: (id: string) => Promise<void>;
   selectedEffort: string | null;
   setEffort: (effort: string) => void;
   permission: PermissionMode;
@@ -413,6 +429,51 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+
+function parseConfiguredProviders(value: unknown): Record<string, ProviderConfigEntry> {
+  if (typeof value !== 'object' || value === null) {
+    return {};
+  }
+  const entries: Record<string, ProviderConfigEntry> = {};
+  for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry !== null && typeof entry === 'object') {
+      entries[id] = entry as ProviderConfigEntry;
+    }
+  }
+  return entries;
+}
+
+/** Read the `desktop.customModels` registry written by this app. Unknown
+ *  shapes are ignored so a hand-edited config.toml can never crash the UI. */
+function parseCustomModelRegistry(desktop: unknown): CustomModelRegistry {
+  const value =
+    typeof desktop === 'object' && desktop !== null
+      ? (desktop as { customModels?: unknown }).customModels
+      : undefined;
+  if (typeof value !== 'object' || value === null) {
+    return {};
+  }
+  const registry: CustomModelRegistry = {};
+  for (const [providerId, byModelId] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof byModelId !== 'object' || byModelId === null) {
+      continue;
+    }
+    const modelEntries: Record<string, { label?: string }> = {};
+    for (const [modelId, meta] of Object.entries(byModelId as Record<string, unknown>)) {
+      const label =
+        typeof meta === 'object' && meta !== null
+          ? (meta as { label?: unknown }).label
+          : undefined;
+      modelEntries[modelId] =
+        typeof label === 'string' && label.trim() ? { label: label.trim() } : {};
+    }
+    if (Object.keys(modelEntries).length > 0) {
+      registry[providerId] = modelEntries;
+    }
+  }
+  return registry;
+}
+
 function turnView(turn: Turn): TurnView {
   return {
     id: turn.id,
@@ -428,7 +489,10 @@ export function useWorkx(): WorkxController {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
-  const [providers, setProviders] = useState<string[]>([]);
+  const [configuredProviders, setConfiguredProviders] = useState<
+    Record<string, ProviderConfigEntry>
+  >({});
+  const [customRegistry, setCustomRegistry] = useState<CustomModelRegistry>({});
   const [providerBusy, setProviderBusy] = useState(false);
   const [effortId, setEffortId] = useState<string | null>(null);
   const [permissionId, setPermissionId] = useState('full-access');
@@ -437,6 +501,7 @@ export function useWorkx(): WorkxController {
   const threadIdRef = useRef<string | null>(null);
   const turnIdRef = useRef<string | null>(null);
   const modelRef = useRef<string | null>(null);
+  const configModelRef = useRef<string | null>(null);
   const effortRef = useRef<string | null>(null);
   const permissionRef = useRef<PermissionMode>(
     PERMISSION_MODES.find((mode) => mode.id === 'full-access') ?? PERMISSION_MODES[0],
@@ -490,30 +555,85 @@ export function useWorkx(): WorkxController {
     dispatch({ type: 'projects', projects: response.data });
   }, [request]);
 
+  /** Seed the selected model from config `model` first (it may be a model id
+   *  the catalog does not list, e.g. an internal/beta model), then fall back
+   *  to the catalog default. */
+  const applyModelSeed = (listed: Model[], configModel: string | null) => {
+    if (configModel) {
+      const known = listed.find((model) => model.id === configModel) ?? null;
+      if (known) {
+        modelRef.current = known.id;
+        setSelectedModelId(known.id);
+        effortRef.current = known.defaultReasoningEffort ?? null;
+        setEffortId(effortRef.current);
+        return;
+      }
+      modelRef.current = configModel;
+      setSelectedModelId(configModel);
+      effortRef.current = null;
+      setEffortId(null);
+      return;
+    }
+    const preferred = listed.find((model) => model.isDefault) ?? listed[0] ?? null;
+    if (preferred) {
+      modelRef.current = preferred.id;
+      setSelectedModelId(preferred.id);
+      effortRef.current = preferred.defaultReasoningEffort ?? null;
+      setEffortId(effortRef.current);
+    }
+  };
+
   const refreshModels = useCallback(async () => {
     const response = await request<ModelListResponse>('model/list', {});
     dispatch({ type: 'models', models: response.data });
     if (!modelRef.current) {
-      const preferred =
-        response.data.find((model) => model.isDefault) ?? response.data[0] ?? null;
-      if (preferred) {
-        modelRef.current = preferred.id;
-        setSelectedModelId(preferred.id);
-        effortRef.current = preferred.defaultReasoningEffort ?? null;
-        setEffortId(preferred.defaultReasoningEffort ?? null);
-      }
+      applyModelSeed(response.data, configModelRef.current);
     }
   }, [request]);
 
   const refreshProviders = useCallback(async () => {
     const response = await request<ConfigReadResponse>('config/read', { includeLayers: true });
-    const configured = Object.keys(
-      (response.config.model_providers as Record<string, unknown> | undefined) ?? {},
-    );
-    const ids = Array.from(new Set([...configured, ...BUILTIN_MODEL_PROVIDER_IDS])).sort();
-    setProviders(ids);
-    setProviderId(response.config.model_provider ?? null);
+    const config = response.config;
+    configModelRef.current = config.model ?? null;
+    setProviderId(config.model_provider ?? null);
+    setConfiguredProviders(parseConfiguredProviders(config.model_providers));
+    setCustomRegistry(parseCustomModelRegistry(config.desktop));
   }, [request]);
+
+  const providers = useMemo<ProviderSummary[]>(
+    () => buildProviderSummaries(configuredProviders, providerId),
+    [configuredProviders, providerId],
+  );
+
+  const customModels = useMemo<CustomModel[]>(
+    () => registryToCustomModels(customRegistry, providerId),
+    [customRegistry, providerId],
+  );
+
+  /** Select a model locally and persist it as config `model` so the choice
+   *  survives restarts and is shared with the CLI/TUI. */
+  const chooseModel = useCallback(
+    (id: string | null) => {
+      if (id === modelRef.current) {
+        return;
+      }
+      modelRef.current = id;
+      setSelectedModelId(id);
+      const model = state.models.find((candidate) => candidate.id === id);
+      effortRef.current = model?.defaultReasoningEffort ?? null;
+      setEffortId(effortRef.current);
+      void request('config/batchWrite', {
+        edits: [{ keyPath: 'model', value: id, mergeStrategy: 'replace' }],
+        reloadUserConfig: true,
+      }).catch((error: unknown) => {
+        dispatch({
+          type: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+    [request, state.models],
+  );
 
   const selectProvider = useCallback(
     async (id: string) => {
@@ -558,6 +678,169 @@ export function useWorkx(): WorkxController {
       }
     },
     [providerBusy, providerId, refreshProviders, request],
+  );
+
+  const persistCustomRegistry = useCallback(
+    async (next: CustomModelRegistry) => {
+      await request('config/batchWrite', {
+        edits: [
+          {
+            keyPath: 'desktop.customModels',
+            value: registryIsEmpty(next) ? null : (next as unknown as object),
+            mergeStrategy: 'replace',
+          },
+        ],
+        reloadUserConfig: true,
+      });
+    },
+    [request],
+  );
+
+  const saveProvider = useCallback(
+    async ({
+      id,
+      entry,
+      activate,
+      defaultModel,
+    }: {
+      id: string;
+      entry: ProviderConfigEntry;
+      activate: boolean;
+      defaultModel?: string | null;
+    }) => {
+      const edits: { keyPath: string; value: unknown; mergeStrategy: 'replace' }[] = [
+        {
+          keyPath: `model_providers.${id}`,
+          value: entry,
+          mergeStrategy: 'replace',
+        },
+      ];
+      const explicitModel = defaultModel?.trim() ?? null;
+      if (activate) {
+        edits.push(
+          { keyPath: 'model_provider', value: id, mergeStrategy: 'replace' },
+          { keyPath: 'model', value: explicitModel, mergeStrategy: 'replace' },
+          { keyPath: 'model_reasoning_effort', value: null, mergeStrategy: 'replace' },
+          { keyPath: 'service_tier', value: null, mergeStrategy: 'replace' },
+        );
+      }
+      await request('config/batchWrite', { edits, reloadUserConfig: true });
+      await refreshProviders();
+      if (!activate) {
+        // Saving the provider that is already active must not touch the
+        // selected model, but the catalog may have changed (new base URL /
+        // endpoint), so refresh it in the background.
+        if (id === providerId) {
+          try {
+            const listed = await request<ModelListResponse>('model/list', {});
+            dispatch({ type: 'models', models: listed.data });
+          } catch {
+            // Keep the previous list; the next provider switch reloads it.
+          }
+        }
+        return;
+      }
+      if (explicitModel) {
+        modelRef.current = explicitModel;
+        setSelectedModelId(explicitModel);
+        effortRef.current = null;
+        setEffortId(null);
+        return;
+      }
+      let listed: Model[] = [];
+      try {
+        listed = (await request<ModelListResponse>('model/list', {})).data;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Provider saved, but its model list could not be loaded: ${message}`);
+      }
+      const preferred = listed.find((model) => model.isDefault) ?? listed[0] ?? null;
+      if (preferred) {
+        await request('config/batchWrite', {
+          edits: [{ keyPath: 'model', value: preferred.id, mergeStrategy: 'replace' }],
+          reloadUserConfig: true,
+        });
+      }
+      dispatch({ type: 'models', models: listed });
+      modelRef.current = preferred?.id ?? null;
+      setSelectedModelId(preferred?.id ?? null);
+      effortRef.current = preferred?.defaultReasoningEffort ?? null;
+      setEffortId(effortRef.current);
+      if (!preferred) {
+        throw new Error(
+          'The provider is active, but its models endpoint returned no models. Open the model menu and type the model id you want to use.',
+        );
+      }
+    },
+    [providerId, refreshProviders, request],
+  );
+
+  const deleteProvider = useCallback(
+    async (id: string) => {
+      if (id === providerId) {
+        throw new Error('Switch to another provider before removing the active one.');
+      }
+      await request('config/batchWrite', {
+        edits: [
+          {
+            keyPath: `model_providers.${id}`,
+            value: null,
+            mergeStrategy: 'replace',
+          },
+        ],
+        reloadUserConfig: true,
+      });
+      await refreshProviders();
+    },
+    [providerId, refreshProviders, request],
+  );
+
+  const addCustomModel = useCallback(
+    async (id: string, label?: string) => {
+      const activeProvider = providerId;
+      if (!activeProvider) {
+        return;
+      }
+      const trimmed = id.trim();
+      if (!trimmed) {
+        return;
+      }
+      const next = withRegistryCustomModel(customRegistry, activeProvider, {
+        id: trimmed,
+        label,
+      });
+      setCustomRegistry(next);
+      try {
+        await persistCustomRegistry(next);
+      } catch (error) {
+        setCustomRegistry(customRegistry);
+        throw error;
+      }
+      chooseModel(trimmed);
+    },
+    [chooseModel, customRegistry, persistCustomRegistry, providerId],
+  );
+
+  const removeCustomModel = useCallback(
+    async (id: string) => {
+      const activeProvider = providerId;
+      if (!activeProvider) {
+        return;
+      }
+      const next = withoutRegistryCustomModel(customRegistry, activeProvider, id);
+      setCustomRegistry(next);
+      try {
+        await persistCustomRegistry(next);
+      } catch (error) {
+        setCustomRegistry(customRegistry);
+        throw error;
+      }
+      if (modelRef.current === id) {
+        const fallback = state.models.find((model) => model.isDefault) ?? state.models[0] ?? null;
+        chooseModel(fallback?.id ?? null);
+      }
+    },
+    [chooseModel, customRegistry, persistCustomRegistry, providerId, state.models],
   );
 
   const startThread = useCallback(
@@ -1075,11 +1358,13 @@ export function useWorkx(): WorkxController {
           return;
         }
         dispatch({ type: 'status', status: 'ready' });
+        // Load provider config first so refreshModels can seed the current
+        // config `model` (which may not appear in model/list at all).
+        await refreshProviders();
+        await refreshModels();
         await Promise.all([
-          refreshModels(),
           refreshThreads(),
           refreshProjects(),
-          refreshProviders(),
           refreshMcpServers(),
         ]);
       } catch (error) {
@@ -1165,15 +1450,7 @@ export function useWorkx(): WorkxController {
     statusMessage: state.statusMessage,
     models: state.models,
     selectedModelId,
-    selectModel: (id) => {
-      modelRef.current = id;
-      setSelectedModelId(id);
-      const model = state.models.find((candidate) => candidate.id === id);
-      if (model) {
-        effortRef.current = model.defaultReasoningEffort ?? null;
-        setEffortId(model.defaultReasoningEffort ?? null);
-      }
-    },
+    selectModel: chooseModel,
     selectedEffort: effortId,
     setEffort: (effort) => {
       effortRef.current = effort;
@@ -1181,8 +1458,14 @@ export function useWorkx(): WorkxController {
     },
     providerId,
     providers,
+    configuredProviders,
+    customModels,
     providerBusy,
     selectProvider,
+    saveProvider,
+    deleteProvider,
+    addCustomModel,
+    removeCustomModel,
     permission,
     setPermission: (mode) => {
       permissionRef.current = mode;

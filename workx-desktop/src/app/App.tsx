@@ -345,6 +345,10 @@ export function App() {
               providerId={workx.providerId}
               providerBusy={workx.providerBusy}
               onProviderChange={(id) => void workx.selectProvider(id)}
+              customModels={workx.customModels}
+              onAddCustomModel={workx.addCustomModel}
+              onRemoveCustomModel={workx.removeCustomModel}
+              onManageProviders={() => setSettingsOpen(true)}
               permission={workx.permission}
               onPermissionChange={workx.setPermission}
               skills={workx.skills}
@@ -374,6 +378,23 @@ export function App() {
         models={workx.models}
         selectedModelId={workx.selectedModelId}
         onModelChange={workx.selectModel}
+        providers={workx.providers}
+        providerId={workx.providerId}
+        providerBusy={workx.providerBusy}
+        onSelectProvider={(id) => void workx.selectProvider(id)}
+        onSaveProvider={(params) =>
+          workx.saveProvider({
+            id: params.id,
+            entry: params.entry,
+            activate: params.activate,
+            defaultModel: params.defaultModel ?? null,
+          })
+        }
+        onDeleteProvider={workx.deleteProvider}
+        configuredProviders={workx.configuredProviders}
+        customModels={workx.customModels}
+        onAddCustomModel={workx.addCustomModel}
+        onRemoveCustomModel={workx.removeCustomModel}
         selectedEffort={workx.selectedEffort}
         onEffortChange={workx.setEffort}
         theme={theme}

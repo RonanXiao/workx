@@ -1,16 +1,4 @@
-import {
-  AlertTriangle,
-  ArrowUp,
-  ChevronDown,
-  FileText,
-  MessageSquare,
-  Mic,
-  Plug,
-  Plus,
-  Puzzle,
-  Sparkles,
-  Square,
-} from 'lucide-react';
+import { AlertTriangle, ArrowUp, Check, ChevronDown, FileText, MessageSquare, Mic, Plug, Plus, Puzzle, Sparkles, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { FuzzyFileSearchResult } from '@protocol/FuzzyFileSearchResult';
@@ -24,6 +12,7 @@ import {
   type ComposerCommand,
   type ComposerMenuBinding,
 } from '../data/composerMenu';
+import type { CustomModel, ProviderSummary } from '../data/providers';
 import { PERMISSION_MODES, type PermissionMode } from '../data/workspace';
 import { cn } from '../lib/cn';
 import { useI18n } from '../lib/i18n';
@@ -40,10 +29,14 @@ interface ComposerProps {
   models: Model[];
   selectedModelId: string | null;
   onModelChange: (id: string) => void;
-  providers: string[];
+  providers: ProviderSummary[];
   providerId: string | null;
   providerBusy: boolean;
   onProviderChange: (id: string) => void;
+  customModels: CustomModel[];
+  onAddCustomModel: (id: string) => Promise<void>;
+  onRemoveCustomModel: (id: string) => Promise<void>;
+  onManageProviders: () => void;
   permission: PermissionMode;
   onPermissionChange: (mode: PermissionMode) => void;
   skills: SkillMetadata[];
@@ -132,6 +125,10 @@ export function Composer({
   providerId,
   providerBusy,
   onProviderChange,
+  customModels,
+  onAddCustomModel,
+  onRemoveCustomModel,
+  onManageProviders,
   permission,
   onPermissionChange,
   skills,
@@ -157,6 +154,8 @@ export function Composer({
   const [fileResults, setFileResults] = useState<FuzzyFileSearchResult[]>([]);
   const [chatResults, setChatResults] = useState<Thread[]>([]);
   const [searching, setSearching] = useState(false);
+  const [modelQuery, setModelQuery] = useState('');
+  const [modelMenuError, setModelMenuError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bindingsRef = useRef(new Map<string, ComposerMenuBinding>());
 
@@ -170,6 +169,7 @@ export function Composer({
   }, [value]);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? null;
+  const activeProviderName = providers.find((provider) => provider.id === providerId)?.name ?? null;
 
   useEffect(() => {
     if (!menu || menu.mode !== 'mention') {
@@ -346,10 +346,14 @@ export function Composer({
 
   const runCommand = (command: ComposerCommand, args: string) => {
     if (command.id === 'model') {
+      setProviderOpen(false);
+      setModelQuery('');
+      setModelMenuError(null);
       setModelOpen(true);
       return;
     }
     if (command.id === 'provider') {
+      setModelOpen(false);
       setProviderOpen(true);
       return;
     }
@@ -449,6 +453,75 @@ export function Composer({
     setMenu(null);
     onSubmit(trimmed, bindings);
   };
+
+  // ---- model picker helpers (listed models + custom models) ----
+
+  const normalizedModelQuery = modelQuery.trim();
+  const customModelIds = new Set(customModels.map((model) => model.id));
+
+  const filteredModels = useMemo(() => {
+    const needle = normalizedModelQuery.toLowerCase();
+    if (!needle) {
+      return models;
+    }
+    return models.filter((model) =>
+      [model.id, model.displayName, model.description].some((term) =>
+        term?.toLowerCase().includes(needle),
+      ),
+    );
+  }, [models, normalizedModelQuery]);
+
+  const openModelMenu = () => {
+    setProviderOpen(false);
+    setModelQuery('');
+    setModelMenuError(null);
+    setModelOpen(true);
+  };
+
+  const closeModelMenu = () => {
+    setModelOpen(false);
+    setModelMenuError(null);
+  };
+
+  const pickCustomFromQuery = async () => {
+    const query = normalizedModelQuery;
+    if (!query) {
+      return;
+    }
+    if (models.some((model) => model.id === query)) {
+      onModelChange(query);
+      closeModelMenu();
+      return;
+    }
+    if (customModelIds.has(query)) {
+      onModelChange(query);
+      closeModelMenu();
+      return;
+    }
+    if (filteredModels.length > 0) {
+      onModelChange(filteredModels[0].id);
+      closeModelMenu();
+      return;
+    }
+    try {
+      await onAddCustomModel(query);
+      closeModelMenu();
+    } catch (error) {
+      setModelMenuError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const removeCustomModelEntry = (id: string) => {
+    void onRemoveCustomModel(id).catch((error: unknown) => {
+      setModelMenuError(error instanceof Error ? error.message : String(error));
+    });
+  };
+
+  const modelSearchMatchesCustom =
+    normalizedModelQuery.length > 0 &&
+    !models.some((model) => model.id === normalizedModelQuery) &&
+    !customModelIds.has(normalizedModelQuery) &&
+    filteredModels.length === 0;
 
   return (
     <div className="shrink-0 px-6 pb-4">
@@ -569,33 +642,49 @@ export function Composer({
               <button
                 type="button"
                 disabled={providerBusy}
-                onClick={() => setProviderOpen((open) => !open)}
+                onClick={() => {
+                  setModelOpen(false);
+                  setProviderOpen((open) => !open);
+                }}
                 className="flex h-7 items-center gap-1 rounded-md px-2 text-[13px] text-fg-secondary hover:bg-hover disabled:opacity-60"
               >
                 <span className="max-w-[140px] truncate">
-                  {providerId ?? t('composer.provider')}
+                  {activeProviderName ?? providerId ?? t('composer.provider')}
                 </span>
                 <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
               </button>
               <Menu open={providerOpen} onClose={() => setProviderOpen(false)} align="right">
-                {providers.map((id) => (
+                {providers.map((provider) => (
                   <MenuItem
-                    key={id}
-                    title={id}
-                    selected={id === providerId}
+                    key={provider.id}
+                    title={provider.name}
+                    description={provider.baseUrl ?? undefined}
+                    selected={provider.id === providerId}
                     onClick={() => {
-                      onProviderChange(id);
+                      onProviderChange(provider.id);
                       setProviderOpen(false);
                     }}
                   />
                 ))}
+                <div className="mt-1 border-t border-line pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProviderOpen(false);
+                      onManageProviders();
+                    }}
+                    className="w-full rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-hover"
+                  >
+                    {t('composer.providerManager')}
+                  </button>
+                </div>
               </Menu>
             </div>
 
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setModelOpen((open) => !open)}
+                onClick={openModelMenu}
                 className="flex h-7 items-center gap-1 rounded-md px-2 text-[13px] text-fg-secondary hover:bg-hover"
               >
                 <span className="max-w-[180px] truncate">
@@ -603,19 +692,112 @@ export function Composer({
                 </span>
                 <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
               </button>
-              <Menu open={modelOpen} onClose={() => setModelOpen(false)} align="right">
-                {models.map((model) => (
-                  <MenuItem
-                    key={model.id}
-                    title={model.displayName}
-                    description={model.description}
-                    selected={model.id === selectedModelId}
-                    onClick={() => {
-                      onModelChange(model.id);
-                      setModelOpen(false);
+              <Menu open={modelOpen} onClose={closeModelMenu} align="right">
+                <div className="space-y-1">
+                  <input
+                    autoFocus
+                    value={modelQuery}
+                    onChange={(event) => {
+                      setModelQuery(event.target.value);
+                      setModelMenuError(null);
                     }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        void pickCustomFromQuery();
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        closeModelMenu();
+                      }
+                    }}
+                    placeholder={t('composer.modelSearch')}
+                    spellCheck={false}
+                    className="h-8 w-full rounded-lg border border-line bg-app px-2.5 text-[13px] outline-none focus:border-line-strong"
                   />
-                ))}
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {filteredModels.length === 0 &&
+                    customModels.length === 0 &&
+                    !normalizedModelQuery ? (
+                      <p className="px-2.5 py-2 text-[12px] text-fg-tertiary">
+                        {t('composer.modelEmpty')}
+                      </p>
+                    ) : null}
+                    {filteredModels.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        onClick={() => {
+                          onModelChange(model.id);
+                          closeModelMenu();
+                        }}
+                        className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-hover"
+                      >
+                        <Check
+                          className={cn(
+                            'mt-0.5 size-3.5 shrink-0',
+                            model.id === selectedModelId ? 'opacity-100' : 'opacity-0',
+                          )}
+                          strokeWidth={2}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px]">{model.displayName}</span>
+                          {model.description ? (
+                            <span className="mt-0.5 block truncate text-[12px] leading-snug text-fg-tertiary">
+                              {model.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    ))}
+                    {customModels.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        onClick={() => {
+                          onModelChange(model.id);
+                          closeModelMenu();
+                        }}
+                        className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-hover"
+                      >
+                        <Check
+                          className={cn(
+                            'mt-0.5 size-3.5 shrink-0',
+                            model.id === selectedModelId ? 'opacity-100' : 'opacity-0',
+                          )}
+                          strokeWidth={2}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px]">{model.id}</span>
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={-1}
+                          title={t('common.delete')}
+                          aria-label={t('common.delete')}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeCustomModelEntry(model.id);
+                          }}
+                          className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-fg-tertiary hover:bg-hover hover:text-fg"
+                        >
+                          <X className="size-3.5" strokeWidth={2} />
+                        </span>
+                      </button>
+                    ))}
+                    {modelSearchMatchesCustom ? (
+                      <button
+                        type="button"
+                        onClick={() => void pickCustomFromQuery()}
+                        className="w-full rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-hover"
+                      >
+                        {t('composer.customModelRow', { query: normalizedModelQuery })}
+                      </button>
+                    ) : null}
+                  </div>
+                  {modelMenuError ? (
+                    <p className="px-2.5 pb-1 text-[12px] text-danger">{modelMenuError}</p>
+                  ) : null}
+                </div>
               </Menu>
             </div>
 
