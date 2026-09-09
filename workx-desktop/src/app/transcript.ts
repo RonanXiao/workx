@@ -22,6 +22,12 @@ export interface Activity {
   detail?: string;
   status?: string;
   active: boolean;
+  /** Exit code of a finished command execution, when the backend reports one. */
+  exitCode?: number | null;
+  /** Aggregated stdout/stderr of a finished command execution, when available. */
+  output?: string | null;
+  /** Full reasoning text shown instead of a bare "thinking" label. */
+  reasoning?: string | null;
 }
 
 export type TranscriptEntry =
@@ -62,6 +68,8 @@ export function activityFromItem(item: ThreadItem, t: Translate): Activity | nul
         detail: item.cwd,
         status: item.status,
         active: item.status === 'inProgress',
+        exitCode: item.exitCode,
+        output: item.aggregatedOutput,
       };
     case 'fileChange':
       return {
@@ -100,13 +108,18 @@ export function activityFromItem(item: ThreadItem, t: Translate): Activity | nul
           : t('activity.searched'),
         active: false,
       };
-    case 'reasoning':
+    case 'reasoning': {
+      const summaryText = item.summary.join('\n\n');
+      const contentText = item.content.join('\n\n');
+      const reasoningText = summaryText || contentText;
       return {
         id: item.id,
         icon: 'reasoning',
         label: item.summary[0] ?? t('activity.thinking'),
+        reasoning: reasoningText || null,
         active: false,
       };
+    }
     case 'plan':
       return { id: item.id, icon: 'plan', label: t('activity.updatedPlan'), active: false };
     case 'functionCallOutput':
