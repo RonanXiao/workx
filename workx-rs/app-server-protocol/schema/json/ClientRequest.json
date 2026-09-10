@@ -2202,6 +2202,15 @@
       "type": "object"
     },
     "ModelProviderBalanceReadParams": {
+      "properties": {
+        "providerId": {
+          "description": "Provider to read; defaults to the active provider when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "ModelProviderCapabilitiesReadParams": {

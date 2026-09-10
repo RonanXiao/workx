@@ -1125,9 +1125,9 @@ impl MessageProcessor {
                 .model_provider_capabilities_read()
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ModelProviderBalanceRead { params: _, .. } => self
+            ClientRequest::ModelProviderBalanceRead { params, .. } => self
                 .config_processor
-                .model_provider_balance_read()
+                .model_provider_balance_read(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::ThreadStart { params, .. } => {

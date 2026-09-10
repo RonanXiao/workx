@@ -38,6 +38,7 @@ use workx_app_server_protocol::FeedbackRequirements;
 use workx_app_server_protocol::InAppBrowserRequirements;
 use workx_app_server_protocol::JSONRPCErrorError;
 use workx_app_server_protocol::ManagedHooksRequirements;
+use workx_app_server_protocol::ModelProviderBalanceReadParams;
 use workx_app_server_protocol::ModelProviderBalanceReadResponse;
 use workx_app_server_protocol::ModelProviderCapabilitiesReadResponse;
 use workx_app_server_protocol::ModelsRequirements;
@@ -222,9 +223,19 @@ impl ConfigRequestProcessor {
     /// turn into a JSON-RPC error for a purely informational request.
     pub(crate) async fn model_provider_balance_read(
         &self,
+        params: ModelProviderBalanceReadParams,
     ) -> Result<ModelProviderBalanceReadResponse, JSONRPCErrorError> {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
-        let provider = config.model_provider.clone();
+        let provider = match params.provider_id.as_deref() {
+            Some(provider_id) => config
+                .model_providers
+                .get(provider_id)
+                .cloned()
+                .ok_or_else(|| {
+                    invalid_request(format!("unknown model provider `{provider_id}`"))
+                })?,
+            None => config.model_provider.clone(),
+        };
         let updated_at = unix_seconds();
         let Some(balance_config) = provider.balance.clone() else {
             return Ok(ModelProviderBalanceReadResponse {

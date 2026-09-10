@@ -1,5 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "providerId": {
+      "description": "Provider to read; defaults to the active provider when omitted.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
   "title": "ModelProviderBalanceReadParams",
   "type": "object"
 }

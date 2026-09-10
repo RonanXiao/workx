@@ -50,7 +50,11 @@ pub struct ModelProviderCapabilitiesReadResponse {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
-pub struct ModelProviderBalanceReadParams {}
+pub struct ModelProviderBalanceReadParams {
+    /// Provider to read; defaults to the active provider when omitted.
+    #[ts(optional = nullable)]
+    pub provider_id: Option<String>,
+}
 
 /// Result of reading the active provider's configured balance endpoint.
 ///

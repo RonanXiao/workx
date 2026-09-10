@@ -12,6 +12,35 @@ use wiremock::matchers::path;
 use workx_app_server_protocol::ClientRequest;
 use workx_app_server_protocol::ModelProviderBalanceReadParams;
 use workx_app_server_protocol::ModelProviderBalanceReadResponse;
+use workx_app_server_protocol::RequestId;
+
+#[tokio::test]
+async fn balance_read_rejects_unknown_provider() -> Result<()> {
+    let workx_home = TempDir::new()?;
+    let mut mcp = TestAppServer::builder()
+        .with_workx_home(workx_home.path())
+        .without_auto_env()
+        .build_initialized()
+        .await?;
+
+    let request_id = mcp
+        .send_raw_request(
+            "modelProvider/balance/read",
+            Some(json!({"providerId": "not-configured"})),
+        )
+        .await?;
+    let error = mcp
+        .read_stream_until_error_message(RequestId::Integer(request_id))
+        .await?;
+
+    assert_eq!(error.error.code, -32600);
+    assert!(
+        error.error.message.contains("not-configured"),
+        "unexpected error: {}",
+        error.error.message
+    );
+    Ok(())
+}
 
 #[tokio::test]
 async fn balance_read_reports_unconfigured_provider() -> Result<()> {
@@ -25,7 +54,7 @@ async fn balance_read_reports_unconfigured_provider() -> Result<()> {
     let response: ModelProviderBalanceReadResponse = mcp
         .request(|request_id| ClientRequest::ModelProviderBalanceRead {
             request_id,
-            params: ModelProviderBalanceReadParams {},
+            params: ModelProviderBalanceReadParams { provider_id: None },
         })
         .await?;
 
@@ -76,7 +105,9 @@ label = "Mock balance"
     let response: ModelProviderBalanceReadResponse = mcp
         .request(|request_id| ClientRequest::ModelProviderBalanceRead {
             request_id,
-            params: ModelProviderBalanceReadParams {},
+            params: ModelProviderBalanceReadParams {
+                provider_id: Some("mock_provider".to_string()),
+            },
         })
         .await?;
 
