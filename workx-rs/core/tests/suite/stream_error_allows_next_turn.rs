@@ -66,6 +66,7 @@ async fn continue_after_stream_error() {
     let provider = ModelProviderInfo {
         custom_models: Vec::new(),
         models_endpoint: None,
+        balance: None,
         name: "mock-openai".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         env_key: Some("PATH".into()),

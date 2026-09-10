@@ -71,6 +71,9 @@ pub struct ModelProviderInfo {
     pub base_url: Option<String>,
     /// 模型列表地址；支持同源绝对路径或完整 URL，默认 /v1/models。
     pub models_endpoint: Option<String>,
+    /// Optional provider-owned balance or quota endpoint used to query remaining credit.
+    #[serde(default)]
+    pub balance: Option<BalanceEndpointConfig>,
     /// Additional models to register for this provider even when its models
     /// endpoint does not list them (for example internal or beta models). Each
     /// entry appears in the model picker without needing to be present in
@@ -128,6 +131,24 @@ pub struct ModelProviderInfo {
     /// Whether this provider supports the standalone web-search endpoint.
     #[serde(default)]
     pub supports_standalone_web_search: bool,
+}
+
+/// Provider-owned endpoint used to read a remaining balance or quota.
+///
+/// The endpoint is requested with the provider's own credentials (API key, bearer token, or
+/// command-backed auth), so a single provider entry describes both inference and balance reads.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct BalanceEndpointConfig {
+    /// Same-origin path (for example `/user/balance`) or absolute HTTP(S) URL.
+    pub endpoint: String,
+    /// Dot/bracket path into the JSON response that holds the value to display, for example
+    /// `data.balance` or `balance_infos[0].total_balance`. A leading `$` is optional.
+    pub value_path: String,
+    /// Optional path to a currency or unit string shown next to the value.
+    pub currency_path: Option<String>,
+    /// Optional row label overriding the default `Balance` label.
+    pub label: Option<String>,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -414,6 +435,7 @@ impl ModelProviderInfo {
             env_key: None,
             env_key_instructions: None,
             models_endpoint: None,
+            balance: None,
             custom_models: Vec::new(),
             experimental_bearer_token: None,
             auth: None,
@@ -459,6 +481,7 @@ impl ModelProviderInfo {
             env_key: None,
             env_key_instructions: None,
             models_endpoint: None,
+            balance: None,
             custom_models: Vec::new(),
             experimental_bearer_token: None,
             auth: None,
@@ -644,6 +667,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         env_key: None,
         env_key_instructions: None,
         models_endpoint: None,
+        balance: None,
         custom_models: Vec::new(),
         experimental_bearer_token: None,
         auth: None,

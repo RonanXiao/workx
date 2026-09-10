@@ -172,6 +172,7 @@ fn model_provider_from_proto(
     };
     let info = ModelProviderInfo {
         models_endpoint: None,
+        balance: None,
         custom_models: Vec::new(),
         name: provider.name,
         base_url: provider.base_url,
@@ -210,6 +211,7 @@ fn model_provider_to_proto(
         env_key_instructions,
         experimental_bearer_token,
         models_endpoint: _,
+        balance: _,
         auth,
         aws: _,
         wire_api,
@@ -545,6 +547,7 @@ mod tests {
         ModelProviderInfo {
             custom_models: Vec::new(),
             models_endpoint: None,
+            balance: None,
             name: "Local".to_string(),
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             env_key: None,

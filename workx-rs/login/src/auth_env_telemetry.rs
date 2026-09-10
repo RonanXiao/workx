@@ -61,6 +61,7 @@ mod tests {
         let provider = ModelProviderInfo {
             custom_models: Vec::new(),
             models_endpoint: None,
+            balance: None,
             name: "Custom".to_string(),
             base_url: None,
             env_key: Some("sk-should-not-leak".to_string()),

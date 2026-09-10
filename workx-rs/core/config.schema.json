@@ -419,6 +419,33 @@
       ],
       "type": "object"
     },
+    "BalanceEndpointConfig": {
+      "additionalProperties": false,
+      "description": "Provider-owned endpoint used to read a remaining balance or quota.\n\nThe endpoint is requested with the provider's own credentials (API key, bearer token, or command-backed auth), so a single provider entry describes both inference and balance reads.",
+      "properties": {
+        "currency_path": {
+          "description": "Optional path to a currency or unit string shown next to the value.",
+          "type": "string"
+        },
+        "endpoint": {
+          "description": "Same-origin path (for example `/user/balance`) or absolute HTTP(S) URL.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Optional row label overriding the default `Balance` label.",
+          "type": "string"
+        },
+        "value_path": {
+          "description": "Dot/bracket path into the JSON response that holds the value to display, for example `data.balance` or `balance_infos[0].total_balance`. A leading `$` is optional.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "value_path"
+      ],
+      "type": "object"
+    },
     "BrowserUseConfigToml": {
       "additionalProperties": false,
       "properties": {
@@ -2284,6 +2311,15 @@
             }
           ],
           "description": "AWS SigV4 auth configuration for this provider."
+        },
+        "balance": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/BalanceEndpointConfig"
+            }
+          ],
+          "default": null,
+          "description": "Optional provider-owned balance or quota endpoint used to query remaining credit."
         },
         "base_url": {
           "description": "Base URL for the provider's OpenAI-compatible API.",

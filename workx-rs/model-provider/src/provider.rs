@@ -568,6 +568,7 @@ mod tests {
     fn provider_info_with_command_auth() -> ModelProviderInfo {
         ModelProviderInfo {
             models_endpoint: None,
+            balance: None,
             auth: Some(ModelProviderAuthInfo {
                 command: "print-token".to_string(),
                 args: Vec::new(),
@@ -590,6 +591,7 @@ mod tests {
     fn provider_for(base_url: String) -> ModelProviderInfo {
         ModelProviderInfo {
             models_endpoint: None,
+            balance: None,
             custom_models: Vec::new(),
             name: "mock".into(),
             base_url: Some(base_url),

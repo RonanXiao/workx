@@ -27,6 +27,7 @@ async fn external_catalog_uses_configured_path_and_saved_key_without_bundled_mod
         name: "custom".into(),
         base_url: Some(format!("{}/v1/responses", server.uri())),
         models_endpoint: Some("/catalog".into()),
+        balance: None,
         experimental_bearer_token: Some("saved-test-key".into()),
         ..Default::default()
     };
@@ -70,6 +71,7 @@ async fn external_catalog_switch_and_empty_results_do_not_reuse_other_models() {
             name: "custom".into(),
             base_url: Some(server.uri()),
             models_endpoint: endpoint,
+            balance: None,
             ..Default::default()
         };
         let manager = OpenAiModelsManager::new_without_cache(

@@ -48,6 +48,7 @@ async fn retries_on_early_close() {
     let model_provider = ModelProviderInfo {
         custom_models: Vec::new(),
         models_endpoint: None,
+        balance: None,
         name: "openai".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         // Environment variable that should exist in the test environment.

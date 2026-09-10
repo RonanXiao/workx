@@ -13,6 +13,7 @@ base_url = "http://localhost:11434/v1"
         "#;
     let expected_provider = ModelProviderInfo {
         models_endpoint: None,
+        balance: None,
         custom_models: Vec::new(),
         name: "Ollama".into(),
         base_url: Some("http://localhost:11434/v1".into()),
@@ -48,6 +49,7 @@ query_params = { api-version = "2025-04-01-preview" }
         "#;
     let expected_provider = ModelProviderInfo {
         models_endpoint: None,
+        balance: None,
         custom_models: Vec::new(),
         name: "Azure".into(),
         base_url: Some("https://xxxxx.openai.azure.com/openai".into()),
@@ -87,6 +89,7 @@ supports_standalone_web_search = true
         "#;
     let expected_provider = ModelProviderInfo {
         models_endpoint: None,
+        balance: None,
         custom_models: Vec::new(),
         name: "Example".into(),
         base_url: Some("https://example.com".into()),
@@ -267,6 +270,7 @@ fn test_create_amazon_bedrock_provider() {
             env_key: None,
             env_key_instructions: None,
             models_endpoint: None,
+            balance: None,
             custom_models: Vec::new(),
             experimental_bearer_token: None,
             auth: None,
@@ -671,4 +675,31 @@ refresh_interval_ms = 0
     let auth = provider.auth.expect("auth config should deserialize");
     assert_eq!(auth.refresh_interval_ms, 0);
     assert_eq!(auth.refresh_interval(), None);
+}
+
+#[test]
+fn test_deserialize_provider_balance_config() {
+    let provider_toml = r#"
+name = "DeepSeek"
+base_url = "https://api.deepseek.com"
+env_key = "DEEPSEEK_API_KEY"
+
+[balance]
+endpoint = "/user/balance"
+value_path = "balance_infos[0].total_balance"
+currency_path = "balance_infos[0].currency"
+label = "DeepSeek balance"
+        "#;
+
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+
+    assert_eq!(
+        provider.balance,
+        Some(BalanceEndpointConfig {
+            endpoint: "/user/balance".to_string(),
+            value_path: "balance_infos[0].total_balance".to_string(),
+            currency_path: Some("balance_infos[0].currency".to_string()),
+            label: Some("DeepSeek balance".to_string()),
+        })
+    );
 }

@@ -592,6 +592,7 @@ mod thread_processor_behavior_tests {
         let session_provider = ModelProviderInfo {
             custom_models: Vec::new(),
             models_endpoint: None,
+            balance: None,
             name: "session".to_string(),
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             env_key: None,

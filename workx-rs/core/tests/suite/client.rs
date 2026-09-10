@@ -1508,6 +1508,7 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
     let provider = ModelProviderInfo {
         custom_models: Vec::new(),
         models_endpoint: None,
+        balance: None,
         name: "corp".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         env_key: None,
@@ -3007,6 +3008,7 @@ async fn azure_responses_request_does_not_store_and_preserves_prefixed_item_ids(
     let provider = ModelProviderInfo {
         custom_models: Vec::new(),
         models_endpoint: None,
+        balance: None,
         name: "azure".into(),
         base_url: Some(format!("{}/openai", server.uri())),
         env_key: None,
@@ -3634,6 +3636,7 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
     let provider = ModelProviderInfo {
         custom_models: Vec::new(),
         models_endpoint: None,
+        balance: None,
         name: "custom".to_string(),
         base_url: Some(format!("{}/openai", server.uri())),
         // Reuse the existing environment variable to avoid using unsafe code
@@ -3720,6 +3723,7 @@ async fn env_var_overrides_loaded_auth() {
     let provider = ModelProviderInfo {
         custom_models: Vec::new(),
         models_endpoint: None,
+        balance: None,
         name: ModelProviderInfo::create_openai_provider(/*base_url*/ None).name,
         base_url: Some(format!("{}/openai", server.uri())),
         // Reuse the existing environment variable to avoid using unsafe code
