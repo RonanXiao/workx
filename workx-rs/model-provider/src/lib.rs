@@ -1,5 +1,6 @@
 mod amazon_bedrock;
 mod auth;
+mod balance;
 mod bearer_auth_provider;
 mod models_endpoint;
 mod provider;
@@ -12,6 +13,8 @@ pub use auth::ResolvedProviderAuth;
 pub use auth::auth_provider_from_auth;
 pub use auth::auth_provider_from_auth_manager;
 pub use auth::unauthenticated_auth_provider;
+pub use balance::ProviderBalance;
+pub use balance::fetch_provider_balance;
 pub use bearer_auth_provider::BearerAuthProvider;
 pub use bearer_auth_provider::BearerAuthProvider as CoreAuthProvider;
 pub use provider::ModelProvider;
