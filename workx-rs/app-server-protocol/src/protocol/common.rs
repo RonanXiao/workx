@@ -1050,6 +1050,11 @@ client_request_definitions! {
         serialization: None,
         response: v2::ModelProviderCapabilitiesReadResponse,
     },
+    ModelProviderBalanceRead => "modelProvider/balance/read" {
+        params: v2::ModelProviderBalanceReadParams,
+        serialization: None,
+        response: v2::ModelProviderBalanceReadResponse,
+    },
     ExperimentalFeatureList => "experimentalFeature/list" {
         params: v2::ExperimentalFeatureListParams,
         serialization: global("config"),

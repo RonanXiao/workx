@@ -57,6 +57,7 @@ mod memory_reset;
 mod misalignment_policy;
 mod model_auto_review;
 mod model_list;
+mod model_provider_balance;
 mod model_provider_capabilities_read;
 mod multi_agent_v2_developer_instructions;
 mod otel;

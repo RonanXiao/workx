@@ -8,6 +8,8 @@ use crate::outgoing_message::ConnectionRequestId;
 use crate::outgoing_message::OutgoingMessageSender;
 use serde_json::json;
 use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use workx_analytics::AnalyticsEventsClient;
 use workx_app_server_protocol::AllowDenyRequirement;
 use workx_app_server_protocol::AutoReviewRequirements;
@@ -36,6 +38,7 @@ use workx_app_server_protocol::FeedbackRequirements;
 use workx_app_server_protocol::InAppBrowserRequirements;
 use workx_app_server_protocol::JSONRPCErrorError;
 use workx_app_server_protocol::ManagedHooksRequirements;
+use workx_app_server_protocol::ModelProviderBalanceReadResponse;
 use workx_app_server_protocol::ModelProviderCapabilitiesReadResponse;
 use workx_app_server_protocol::ModelsRequirements;
 use workx_app_server_protocol::NetworkDomainPermission;
@@ -61,6 +64,13 @@ use workx_protocol::config_types::WebSearchMode;
 
 const BACKGROUND_PAGINATED_ROLLOUT_MIGRATION_FEATURE: &str =
     "background_paginated_rollout_migration";
+
+fn unix_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or_default()
+}
 
 const SUPPORTED_EXPERIMENTAL_FEATURE_ENABLEMENT: &[&str] = &[
     "auth_elicitation",
@@ -203,6 +213,63 @@ impl ConfigRequestProcessor {
             namespace_tools: capabilities.namespace_tools,
             image_generation: capabilities.image_generation,
             web_search: capabilities.web_search,
+        })
+    }
+
+    /// Reads the active provider's configured balance endpoint, if any.
+    ///
+    /// Lookup failures are reported inside the response so a transient provider outage does not
+    /// turn into a JSON-RPC error for a purely informational request.
+    pub(crate) async fn model_provider_balance_read(
+        &self,
+    ) -> Result<ModelProviderBalanceReadResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let provider = config.model_provider.clone();
+        let updated_at = unix_seconds();
+        let Some(balance_config) = provider.balance.clone() else {
+            return Ok(ModelProviderBalanceReadResponse {
+                configured: false,
+                value: None,
+                currency: None,
+                label: None,
+                updated_at,
+                error: None,
+            });
+        };
+
+        let auth = self.thread_manager.auth_manager().auth().await;
+        let result = workx_model_provider::fetch_provider_balance(
+            &provider,
+            auth.as_ref(),
+            config.http_client_factory(),
+        )
+        .await;
+
+        Ok(match result {
+            Ok(Some(balance)) => ModelProviderBalanceReadResponse {
+                configured: true,
+                value: Some(balance.value),
+                currency: balance.currency,
+                label: balance.label,
+                updated_at,
+                error: None,
+            },
+            Ok(None) => ModelProviderBalanceReadResponse {
+                configured: false,
+                value: None,
+                currency: None,
+                label: None,
+                updated_at,
+                error: None,
+            },
+            Err(err) => ModelProviderBalanceReadResponse {
+                configured: true,
+                value: None,
+                currency: None,
+                label: balance_config.label,
+                updated_at,
+                error: Some(err.to_string()),
+            },
         })
     }
 

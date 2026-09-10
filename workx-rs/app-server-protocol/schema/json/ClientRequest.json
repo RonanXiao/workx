@@ -2201,6 +2201,9 @@
       },
       "type": "object"
     },
+    "ModelProviderBalanceReadParams": {
+      "type": "object"
+    },
     "ModelProviderCapabilitiesReadParams": {
       "type": "object"
     },
@@ -7293,6 +7296,30 @@
         "params"
       ],
       "title": "ModelProvider/capabilities/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/balance/read"
+          ],
+          "title": "ModelProvider/balance/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelProviderBalanceReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/balance/readRequest",
       "type": "object"
     },
     {

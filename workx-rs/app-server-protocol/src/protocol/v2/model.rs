@@ -47,6 +47,33 @@ pub struct ModelProviderCapabilitiesReadResponse {
     pub web_search: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderBalanceReadParams {}
+
+/// Result of reading the active provider's configured balance endpoint.
+///
+/// Lookup failures are reported in `error` instead of failing the request so clients can keep
+/// showing the provider row while surfacing that the balance is currently unknown.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderBalanceReadResponse {
+    /// Whether the active provider declares a `balance` endpoint in config.
+    pub configured: bool,
+    /// Formatted balance value, or `null` when unconfigured or the lookup failed.
+    pub value: Option<String>,
+    /// Optional currency or unit reported next to the value.
+    pub currency: Option<String>,
+    /// Optional row label from the provider's `balance` config.
+    pub label: Option<String>,
+    /// Unix seconds when the lookup completed.
+    pub updated_at: i64,
+    /// Non-fatal lookup failure message.
+    pub error: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]

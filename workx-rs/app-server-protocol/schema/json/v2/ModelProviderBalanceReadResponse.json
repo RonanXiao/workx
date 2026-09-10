@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Result of reading the active provider's configured balance endpoint.\n\nLookup failures are reported in `error` instead of failing the request so clients can keep showing the provider row while surfacing that the balance is currently unknown.",
+  "properties": {
+    "configured": {
+      "description": "Whether the active provider declares a `balance` endpoint in config.",
+      "type": "boolean"
+    },
+    "currency": {
+      "description": "Optional currency or unit reported next to the value.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "error": {
+      "description": "Non-fatal lookup failure message.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label": {
+      "description": "Optional row label from the provider's `balance` config.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updatedAt": {
+      "description": "Unix seconds when the lookup completed.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "value": {
+      "description": "Formatted balance value, or `null` when unconfigured or the lookup failed.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "configured",
+    "updatedAt"
+  ],
+  "title": "ModelProviderBalanceReadResponse",
+  "type": "object"
+}

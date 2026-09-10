@@ -306,6 +306,8 @@ export type { Model } from "./Model";
 export type { ModelAvailabilityNux } from "./ModelAvailabilityNux";
 export type { ModelListParams } from "./ModelListParams";
 export type { ModelListResponse } from "./ModelListResponse";
+export type { ModelProviderBalanceReadParams } from "./ModelProviderBalanceReadParams";
+export type { ModelProviderBalanceReadResponse } from "./ModelProviderBalanceReadResponse";
 export type { ModelProviderCapabilitiesReadParams } from "./ModelProviderCapabilitiesReadParams";
 export type { ModelProviderCapabilitiesReadResponse } from "./ModelProviderCapabilitiesReadResponse";
 export type { ModelRerouteReason } from "./ModelRerouteReason";
