@@ -8,10 +8,9 @@ import { FileExplorerPanel } from '../components/FileExplorerPanel';
 import { GoalBanner } from '../components/GoalBanner';
 import { GoalDialog } from '../components/GoalDialog';
 import { MessageList } from '../components/MessageList';
-import { ProviderManagerDialog } from '../components/ProviderManagerDialog';
 import { ResizeHandle } from '../components/ResizeHandle';
 import { ReviewPanel } from '../components/ReviewPanel';
-import { SettingsDialog } from '../components/SettingsDialog';
+import { SettingsPage, type SettingsSection } from '../components/settings/SettingsPage';
 import { Sidebar, threadTitle } from '../components/Sidebar';
 import { TopBar } from '../components/TopBar';
 import { McpPanel, PluginsPanel, SkillsPanel } from '../components/WorkxPanels';
@@ -47,8 +46,7 @@ export function App() {
   const workx = useWorkx();
   const [theme, setTheme] = useState<ThemePreference>(readStoredTheme);
   const [activeNav, setActiveNav] = useState<NavKey | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [providersOpen, setProvidersOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewFocus, setReviewFocus] = useState<FileUpdateChange | null>(null);
@@ -106,7 +104,7 @@ export function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === ',' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        setSettingsOpen(true);
+        setSettingsSection((current) => current ?? 'general');
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -362,7 +360,7 @@ export function App() {
         width={sidebarWidth}
         activeNav={activeNav}
         onSelectNav={setActiveNav}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => setSettingsSection('general')}
         onNewChat={() => {
           setActiveNav('new-chat');
           void workx.newThread();
@@ -516,7 +514,7 @@ export function App() {
               providerId={workx.providerId}
               providerBusy={workx.providerBusy}
               onProviderChange={(id) => void workx.selectProvider(id)}
-              onManageProviders={() => setProvidersOpen(true)}
+              onManageProviders={() => setSettingsSection('providers')}
               permission={workx.permission}
               onPermissionChange={workx.setPermission}
               skills={workx.skills}
@@ -583,17 +581,33 @@ export function App() {
         </>
       ) : null}
 
-      <SettingsDialog
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        models={workx.models}
-        selectedModelId={workx.selectedModelId}
-        onModelChange={workx.selectModel}
-        selectedEffort={workx.selectedEffort}
-        onEffortChange={workx.setEffort}
-        theme={theme}
-        onThemeChange={setTheme}
-      />
+      {settingsSection ? (
+        <SettingsPage
+          section={settingsSection}
+          onSectionChange={setSettingsSection}
+          onClose={() => setSettingsSection(null)}
+          models={workx.models}
+          selectedModelId={workx.selectedModelId}
+          onModelChange={workx.selectModel}
+          selectedEffort={workx.selectedEffort}
+          onEffortChange={workx.setEffort}
+          providers={workx.providers}
+          providerId={workx.providerId}
+          providerBusy={workx.providerBusy}
+          onProviderChange={(id) => void workx.selectProvider(id)}
+          theme={theme}
+          onThemeChange={setTheme}
+          permission={workx.permission}
+          onPermissionChange={workx.setPermission}
+          providerConfigs={workx.providerConfigs}
+          onSaveProvider={workx.saveProvider}
+          onDeleteProvider={workx.deleteProvider}
+          onReadProviderBalance={workx.readProviderBalance}
+          appServerStatus={workx.status}
+          serverInfo={workx.serverInfo}
+          cwd={activeCwd}
+        />
+      ) : null}
 
       <GoalDialog
         open={goalDialogOpen}
@@ -612,14 +626,6 @@ export function App() {
           </div>
         </div>
       ) : null}
-
-      <ProviderManagerDialog
-        open={providersOpen}
-        onClose={() => setProvidersOpen(false)}
-        providerConfigs={workx.providerConfigs}
-        onSave={workx.saveProvider}
-        onDelete={workx.deleteProvider}
-      />
 
       <CreateProjectDialog
         open={projectDialog !== null}

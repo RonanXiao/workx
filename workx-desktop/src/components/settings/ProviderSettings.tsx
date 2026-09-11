@@ -1,22 +1,22 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import {
   BUILTIN_MODEL_PROVIDER_IDS,
   type CustomModelConfig,
   type InputModality,
+  type ProviderBalanceView,
   type ProviderConfig,
   type ProviderWireApi,
-} from '../app/useWorkx';
-import { cn } from '../lib/cn';
-import { useI18n } from '../lib/i18n';
+} from '../../app/useWorkx';
+import { cn } from '../../lib/cn';
+import { useI18n } from '../../lib/i18n';
 
-interface ProviderManagerDialogProps {
-  open: boolean;
-  onClose: () => void;
+interface ProviderSettingsProps {
   providerConfigs: Record<string, ProviderConfig>;
   onSave: (id: string, config: ProviderConfig) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onReadBalance: (id: string | null) => Promise<ProviderBalanceView>;
 }
 
 interface CustomModelDraft {
@@ -34,6 +34,10 @@ interface ProviderDraft {
   envKey: string;
   wireApi: ProviderWireApi;
   modelsEndpoint: string;
+  balanceEndpoint: string;
+  balanceValuePath: string;
+  balanceCurrencyPath: string;
+  balanceLabel: string;
   customModels: CustomModelDraft[];
 }
 
@@ -45,6 +49,10 @@ const EMPTY_DRAFT: ProviderDraft = {
   envKey: '',
   wireApi: 'responses',
   modelsEndpoint: '',
+  balanceEndpoint: '',
+  balanceValuePath: '',
+  balanceCurrencyPath: '',
+  balanceLabel: '',
   customModels: [],
 };
 
@@ -73,6 +81,10 @@ function draftFromConfig(id: string, config: ProviderConfig): ProviderDraft {
     envKey: config.envKey,
     wireApi: config.wireApi,
     modelsEndpoint: config.modelsEndpoint,
+    balanceEndpoint: config.balance.endpoint,
+    balanceValuePath: config.balance.valuePath,
+    balanceCurrencyPath: config.balance.currencyPath,
+    balanceLabel: config.balance.label,
     customModels: config.customModels.map((model) => ({
       id: model.id,
       contextWindow: model.contextWindow === null ? '' : String(model.contextWindow),
@@ -83,26 +95,25 @@ function draftFromConfig(id: string, config: ProviderConfig): ProviderDraft {
   };
 }
 
-export function ProviderManagerDialog({
-  open,
-  onClose,
+export function ProviderSettings({
   providerConfigs,
   onSave,
   onDelete,
-}: ProviderManagerDialogProps) {
+  onReadBalance,
+}: ProviderSettingsProps) {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProviderDraft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [balance, setBalance] = useState<ProviderBalanceView | null>(null);
+  const [balanceBusy, setBalanceBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const configuredIds = Object.keys(providerConfigs).sort();
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
     const first = Object.keys(providerConfigs).sort()[0];
     if (first) {
       setSelectedId(first);
@@ -114,36 +125,18 @@ export function ProviderManagerDialog({
     setError(null);
     setBusy(false);
     setConfirmDelete(false);
-    // Reset only when the dialog opens; edits must survive parent re-renders.
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') {
-        return;
-      }
-      if (confirmDelete) {
-        setConfirmDelete(false);
-      } else {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [confirmDelete, open, onClose]);
-
-  if (!open) {
-    return null;
-  }
+    setBalance(null);
+    setBalanceBusy(false);
+    // Select the first provider on mount; edits must survive parent re-renders.
+  }, []);
 
   const select = (id: string) => {
     setSelectedId(id);
     setDraft(draftFromConfig(id, providerConfigs[id]));
     setError(null);
     setConfirmDelete(false);
+    setBalance(null);
+    setSaved(false);
   };
 
   const startNew = () => {
@@ -151,6 +144,28 @@ export function ProviderManagerDialog({
     setDraft(EMPTY_DRAFT);
     setError(null);
     setConfirmDelete(false);
+    setBalance(null);
+  };
+
+  const handleCheckBalance = async () => {
+    if (!selectedId) {
+      return;
+    }
+    setBalanceBusy(true);
+    try {
+      setBalance(await onReadBalance(selectedId));
+    } catch (readError) {
+      setBalance({
+        configured: true,
+        value: null,
+        currency: null,
+        label: null,
+        updatedAt: Math.floor(Date.now() / 1000),
+        error: readError instanceof Error ? readError.message : String(readError),
+      });
+    } finally {
+      setBalanceBusy(false);
+    }
   };
 
   const handleSave = async () => {
@@ -205,6 +220,23 @@ export function ProviderManagerDialog({
         : (['text', ...model.inputModalities] as InputModality[]);
       customModels.push({ id: modelId, contextWindow, maxContextWindow, inputModalities });
     }
+    const balanceEndpoint = draft.balanceEndpoint.trim();
+    const balanceValuePath = draft.balanceValuePath.trim();
+    if (Boolean(balanceEndpoint) !== Boolean(balanceValuePath)) {
+      setError(t('provider.balanceIncomplete'));
+      return;
+    }
+    if (
+      balanceEndpoint &&
+      !(
+        balanceEndpoint.startsWith('/') ||
+        balanceEndpoint.startsWith('https://') ||
+        balanceEndpoint.startsWith('http://')
+      )
+    ) {
+      setError(t('provider.balanceInvalidEndpoint'));
+      return;
+    }
     const targetId = selectedId ?? id;
     const config: ProviderConfig = {
       name: draft.name.trim() || targetId,
@@ -213,12 +245,19 @@ export function ProviderManagerDialog({
       envKey: draft.envKey.trim(),
       wireApi: draft.wireApi,
       modelsEndpoint: draft.modelsEndpoint.trim(),
+      balance: {
+        endpoint: balanceEndpoint,
+        valuePath: balanceValuePath,
+        currencyPath: draft.balanceCurrencyPath.trim(),
+        label: draft.balanceLabel.trim(),
+      },
       customModels,
     };
     setBusy(true);
     try {
       await onSave(targetId, config);
-      onClose();
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
     } catch (saveError) {
       setError(
         t('provider.saveFailed', {
@@ -260,17 +299,8 @@ export function ProviderManagerDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-6"
-      onMouseDown={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('provider.title')}
-        onMouseDown={(event) => event.stopPropagation()}
-        className="flex h-[600px] w-[760px] max-w-full overflow-hidden rounded-2xl border border-line bg-elevated shadow-2xl"
-      >
+    <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 overflow-hidden">
         <div className="flex w-[230px] shrink-0 flex-col border-r border-line bg-app">
           <h2 className="px-4 pt-4 pb-3 text-[15px] font-semibold">{t('provider.title')}</h2>
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -394,6 +424,93 @@ export function ProviderManagerDialog({
                   className="h-9 w-full rounded-lg border border-line bg-app px-2.5 text-[14px] outline-none focus:border-line-strong"
                 />
               </Field>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-line bg-app p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] text-fg-secondary">
+                    {t('provider.balance')}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!selectedId || balanceBusy}
+                    onClick={() => void handleCheckBalance()}
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-line px-2.5 text-[12px] hover:bg-hover disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={cn('size-3.5', balanceBusy && 'animate-spin')}
+                      strokeWidth={1.75}
+                    />
+                    {t('provider.balanceCheck')}
+                  </button>
+                </div>
+                <span className="text-[11px] leading-snug text-fg-tertiary">
+                  {t('provider.balanceHint')}
+                </span>
+                <Field label={t('provider.balanceEndpoint')}>
+                  <input
+                    value={draft.balanceEndpoint}
+                    onChange={(event) => {
+                      setBalance(null);
+                      setDraft({ ...draft, balanceEndpoint: event.target.value });
+                    }}
+                    placeholder="/user/balance"
+                    className="h-9 w-full rounded-lg border border-line bg-elevated px-2.5 text-[14px] outline-none focus:border-line-strong"
+                  />
+                </Field>
+                <Field label={t('provider.balanceValuePath')}>
+                  <input
+                    value={draft.balanceValuePath}
+                    onChange={(event) => {
+                      setBalance(null);
+                      setDraft({ ...draft, balanceValuePath: event.target.value });
+                    }}
+                    placeholder="balance_infos[0].total_balance"
+                    className="h-9 w-full rounded-lg border border-line bg-elevated px-2.5 font-mono text-[13px] outline-none focus:border-line-strong"
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label={t('provider.balanceCurrencyPath')}>
+                    <input
+                      value={draft.balanceCurrencyPath}
+                      onChange={(event) => {
+                        setBalance(null);
+                        setDraft({ ...draft, balanceCurrencyPath: event.target.value });
+                      }}
+                      placeholder="balance_infos[0].currency"
+                      className="h-9 w-full rounded-lg border border-line bg-elevated px-2.5 font-mono text-[12px] outline-none focus:border-line-strong"
+                    />
+                  </Field>
+                  <Field label={t('provider.balanceLabel')}>
+                    <input
+                      value={draft.balanceLabel}
+                      onChange={(event) => {
+                        setBalance(null);
+                        setDraft({ ...draft, balanceLabel: event.target.value });
+                      }}
+                      placeholder="DeepSeek"
+                      className="h-9 w-full rounded-lg border border-line bg-elevated px-2.5 text-[13px] outline-none focus:border-line-strong"
+                    />
+                  </Field>
+                </div>
+                {balance ? (
+                  <p
+                    className={cn(
+                      'text-[12px] leading-snug',
+                      balance.error ? 'text-danger' : 'text-fg-secondary',
+                    )}
+                  >
+                    {balance.error
+                      ? t('provider.balanceFailed', { message: balance.error })
+                      : balance.configured && balance.value
+                        ? t('provider.balanceValue', {
+                            value: balance.currency
+                              ? `${balance.value} ${balance.currency}`
+                              : balance.value,
+                          })
+                        : t('provider.balanceUnconfigured')}
+                  </p>
+                ) : null}
+              </div>
 
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
@@ -607,14 +724,10 @@ export function ProviderManagerDialog({
                 )
               ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="h-8 rounded-full border border-line px-4 text-[13px] hover:bg-hover"
-              >
-                {t('common.close')}
-              </button>
+            <div className="flex shrink-0 items-center gap-3">
+              {saved ? (
+                <span className="text-[12px] text-fg-tertiary">{t('settings.saved')}</span>
+              ) : null}
               <button
                 type="button"
                 disabled={busy}

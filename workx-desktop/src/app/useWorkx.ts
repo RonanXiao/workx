@@ -4,6 +4,7 @@ import type { ConfigReadResponse } from '@protocol/v2/ConfigReadResponse';
 import type { ErrorNotification } from '@protocol/v2/ErrorNotification';
 import type { FileChangeRequestApprovalParams } from '@protocol/v2/FileChangeRequestApprovalParams';
 import type { FuzzyFileSearchResponse } from '@protocol/FuzzyFileSearchResponse';
+import type { InitializeResponse } from '@protocol/InitializeResponse';
 import type { FuzzyFileSearchResult } from '@protocol/FuzzyFileSearchResult';
 import type { ItemCompletedNotification } from '@protocol/v2/ItemCompletedNotification';
 import type { ItemStartedNotification } from '@protocol/v2/ItemStartedNotification';
@@ -99,7 +100,26 @@ export interface ProviderConfig {
   envKey: string;
   wireApi: ProviderWireApi;
   modelsEndpoint: string;
+  balance: ProviderBalanceConfig;
   customModels: CustomModelConfig[];
+}
+
+/// Provider-owned balance endpoint used by `modelProvider/balance/read`.
+export interface ProviderBalanceConfig {
+  endpoint: string;
+  valuePath: string;
+  currencyPath: string;
+  label: string;
+}
+
+/// Result of reading a provider's balance endpoint.
+export interface ProviderBalanceView {
+  configured: boolean;
+  value: string | null;
+  currency: string | null;
+  label: string | null;
+  updatedAt: number;
+  error: string | null;
 }
 
 /// Provider keys the manager owns. When a field is cleared we must explicitly
@@ -109,6 +129,7 @@ const OPTIONAL_PROVIDER_CONFIG_KEYS = [
   'experimental_bearer_token',
   'env_key',
   'models_endpoint',
+  'balance',
   'custom_models',
 ];
 
@@ -163,6 +184,7 @@ function normalizeCustomModel(raw: unknown): CustomModelConfig | null {
 export function normalizeProviderConfig(raw: unknown): ProviderConfig {
   const value = (raw ?? {}) as Record<string, unknown>;
   const wireApi = value.wire_api;
+  const rawBalance = (value.balance ?? {}) as Record<string, unknown>;
   return {
     name: typeof value.name === 'string' ? value.name : '',
     baseUrl: typeof value.base_url === 'string' ? value.base_url : '',
@@ -174,6 +196,13 @@ export function normalizeProviderConfig(raw: unknown): ProviderConfig {
     wireApi: wireApi === 'chat' ? 'chat' : wireApi === 'auto' ? 'auto' : 'responses',
     modelsEndpoint:
       typeof value.models_endpoint === 'string' ? value.models_endpoint : '',
+    balance: {
+      endpoint: typeof rawBalance.endpoint === 'string' ? rawBalance.endpoint : '',
+      valuePath: typeof rawBalance.value_path === 'string' ? rawBalance.value_path : '',
+      currencyPath:
+        typeof rawBalance.currency_path === 'string' ? rawBalance.currency_path : '',
+      label: typeof rawBalance.label === 'string' ? rawBalance.label : '',
+    },
     customModels: Array.isArray(value.custom_models)
       ? value.custom_models
           .map(normalizeCustomModel)
@@ -196,6 +225,23 @@ function providerConfigToToml(config: ProviderConfig): Record<string, unknown> {
   }
   if (config.modelsEndpoint.trim()) {
     value.models_endpoint = config.modelsEndpoint.trim();
+  }
+  const balanceEndpoint = config.balance.endpoint.trim();
+  const balanceValuePath = config.balance.valuePath.trim();
+  if (balanceEndpoint && balanceValuePath) {
+    const balance: Record<string, unknown> = {
+      endpoint: balanceEndpoint,
+      value_path: balanceValuePath,
+    };
+    const currencyPath = config.balance.currencyPath.trim();
+    if (currencyPath) {
+      balance.currency_path = currencyPath;
+    }
+    const label = config.balance.label.trim();
+    if (label) {
+      balance.label = label;
+    }
+    value.balance = balance;
   }
   const customModels = config.customModels
     .map((model) => ({ ...model, id: model.id.trim() }))
@@ -255,6 +301,7 @@ export interface PendingSteer {
 export interface WorkxController {
   status: 'connecting' | 'ready' | 'error' | 'stopped';
   statusMessage: string | null;
+  serverInfo: InitializeResponse | null;
   models: Model[];
   selectedModelId: string | null;
   selectModel: (id: string) => void;
@@ -265,6 +312,7 @@ export interface WorkxController {
   selectProvider: (id: string) => Promise<void>;
   saveProvider: (id: string, config: ProviderConfig) => Promise<void>;
   deleteProvider: (id: string) => Promise<void>;
+  readProviderBalance: (id: string | null) => Promise<ProviderBalanceView>;
   selectedEffort: string | null;
   setEffort: (effort: string) => void;
   permission: PermissionMode;
@@ -334,6 +382,7 @@ export interface WorkxController {
 interface State {
   status: WorkxController['status'];
   statusMessage: string | null;
+  serverInfo: InitializeResponse | null;
   models: Model[];
   projects: Project[];
   threads: Thread[];
@@ -365,6 +414,7 @@ interface State {
 
 type Action =
   | { type: 'status'; status: State['status']; message?: string | null }
+  | { type: 'serverInfo'; info: InitializeResponse | null }
   | { type: 'models'; models: Model[] }
   | { type: 'projects'; projects: Project[] }
   | { type: 'threads'; threads: Thread[] }
@@ -402,6 +452,7 @@ type Action =
 const initialState: State = {
   status: 'connecting',
   statusMessage: null,
+  serverInfo: null,
   models: [],
   projects: [],
   threads: [],
@@ -458,6 +509,8 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'status':
       return { ...state, status: action.status, statusMessage: action.message ?? null };
+    case 'serverInfo':
+      return { ...state, serverInfo: action.info };
     case 'models':
       return { ...state, models: action.models };
     case 'projects':
@@ -933,6 +986,15 @@ export function useWorkx(): WorkxController {
       refreshProviders,
       request,
     ],
+  );
+
+  const readProviderBalance = useCallback(
+    async (id: string | null) => {
+      return request<ProviderBalanceView>('modelProvider/balance/read', {
+        providerId: id,
+      });
+    },
+    [request],
   );
 
   const startThread = useCallback(
@@ -1670,6 +1732,7 @@ export function useWorkx(): WorkxController {
           dispatch({ type: 'status', status: 'error', message: result.message ?? 'failed' });
           return;
         }
+        dispatch({ type: 'serverInfo', info: result.info ?? null });
         dispatch({ type: 'status', status: 'ready' });
         await Promise.all([
           refreshModels(),
@@ -1778,6 +1841,7 @@ export function useWorkx(): WorkxController {
   return {
     status: state.status,
     statusMessage: state.statusMessage,
+    serverInfo: state.serverInfo,
     models: state.models,
     selectedModelId,
     selectModel: (id) => {
@@ -1801,6 +1865,7 @@ export function useWorkx(): WorkxController {
     selectProvider,
     saveProvider,
     deleteProvider,
+    readProviderBalance,
     permission,
     setPermission: (mode) => {
       permissionRef.current = mode;

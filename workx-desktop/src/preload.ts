@@ -4,6 +4,16 @@ import type { InitializeResponse } from '@protocol/InitializeResponse';
 
 type ThemeSource = 'light' | 'dark' | 'system';
 
+export interface AppInfo {
+  name: string;
+  version: string;
+  platform: string;
+  arch: string;
+  electron: string;
+  chrome: string;
+  node: string;
+}
+
 export interface AppServerNotification {
   method: string;
   params: unknown;
@@ -114,6 +124,7 @@ const api = {
   openPath: (target: string): Promise<string> => ipcRenderer.invoke('workx:open-path', target),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('workx:pick-folder'),
   getTheme: (): Promise<ThemeSource> => ipcRenderer.invoke('workx:get-theme'),
+  getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke('workx:get-app-info'),
   savePastedImage: (data: Uint8Array, extension: string): Promise<string | null> =>
     ipcRenderer.invoke('workx:save-pasted-image', data, extension),
   readImage: (target: string): Promise<string | null> =>

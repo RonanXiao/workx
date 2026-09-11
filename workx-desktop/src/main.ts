@@ -100,6 +100,16 @@ ipcMain.handle('workx:pick-folder', async () => {
 
 ipcMain.handle('workx:get-theme', () => nativeTheme.themeSource);
 
+ipcMain.handle('workx:get-app-info', () => ({
+  name: app.getName(),
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  electron: process.versions.electron,
+  chrome: process.versions.chrome,
+  node: process.versions.node,
+}));
+
 const IMAGE_MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
