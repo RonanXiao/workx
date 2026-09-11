@@ -3746,7 +3746,7 @@ pub struct RealtimeConversationListVoicesResponseEvent {
 pub enum Product {
     #[serde(alias = "CHATGPT")]
     Chatgpt,
-    #[serde(alias = "WORKX")]
+    #[serde(alias = "WORKX", alias = "CODEX")]
     Workx,
     #[serde(alias = "ATLAS")]
     Atlas,
@@ -4720,6 +4720,14 @@ mod tests {
         assert_eq!(
             SessionSource::Custom("atlas-dev".to_string()).restriction_product(),
             None
+        );
+    }
+
+    #[test]
+    fn product_deserializes_legacy_codex_alias_as_workx() {
+        assert_eq!(
+            serde_json::from_str::<Product>("\"CODEX\"").unwrap(),
+            Product::Workx
         );
     }
 
