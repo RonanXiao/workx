@@ -11,10 +11,11 @@ import type { InitializeResponse } from '@protocol/InitializeResponse';
 export type JsonRpcId = string | number;
 
 /**
- * Resolve the `workx` CLI. Packaged macOS apps launched from Finder inherit a
- * minimal PATH, so a Homebrew-installed CLI is not discoverable via `workx`
- * alone. Prefer an explicit override, then a CLI bundled inside the app, then
- * the common Homebrew and per-user install locations.
+ * Resolve the `workx` CLI. GUI apps launched from Finder or the Start menu
+ * inherit a minimal PATH, so a separately installed CLI is not discoverable via
+ * `workx` alone. Prefer an explicit override, then the CLI bundled inside the
+ * app (the Windows installer ships one), then the per-platform install
+ * locations that the installers and package managers use.
  */
 export function resolveWorkxBinary(): string {
   const override = process.env.WORKX_BIN?.trim();
@@ -29,15 +30,19 @@ export function resolveWorkxBinary(): string {
   if (process.platform === 'darwin') {
     candidates.push(path.join('/opt/homebrew/bin', executable), path.join('/usr/local/bin', executable));
   } else if (process.platform === 'win32') {
-    candidates.push(
-      path.join(homedir(), '.local', 'bin', executable),
-      path.join(process.env.LOCALAPPDATA ?? '', 'Workx', 'bin', executable),
-    );
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      candidates.push(
+        path.join(localAppData, 'Programs', 'OpenAI', 'Workx', 'bin', executable),
+        path.join(localAppData, 'Workx', 'bin', executable),
+      );
+    }
+    candidates.push(path.join(homedir(), '.local', 'bin', executable));
   } else {
     candidates.push(path.join(homedir(), '.local', 'bin', executable));
   }
   for (const candidate of candidates) {
-    if (candidate && existsSync(candidate)) {
+    if (existsSync(candidate)) {
       return candidate;
     }
   }

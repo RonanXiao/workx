@@ -245,6 +245,9 @@ jobs:
     needs:
       - bump-version
       - create-release
+      # The Windows installer bundles `workx-package-x86_64-pc-windows-msvc`
+      # from this release instead of rebuilding the CLI.
+      - build-package
     runs-on: ${{ matrix.os }}
     env:
       VERSION: ${{ needs.create-release.outputs.version }}
@@ -318,6 +321,26 @@ jobs:
             echo "WINDOWS_CERTIFICATE_FILE=$cert_path"
             echo "WINDOWS_CERTIFICATE_PASSWORD=$WINDOWS_CERTIFICATE_PASSWORD"
           } >> "$GITHUB_ENV"
+
+      # The Windows installer bundles the CLI so it works without a separate
+      # `install.ps1` run. Reuse the package this release already publishes
+      # instead of rebuilding the CLI here. macOS keeps resolving the CLI from
+      # the Homebrew formula its cask depends on.
+      - name: Unpack the CLI to bundle
+        if: matrix.platform == 'win32'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="workx-package-x86_64-pc-windows-msvc.tar.gz"
+          # `tar` reads the drive letter in `$RUNNER_TEMP` as a remote host, so
+          # extract there using relative paths.
+          cd "$RUNNER_TEMP"
+          gh release download "$TAG" --pattern "$archive" --dir .
+          mkdir -p workx-cli
+          tar -xzf "$archive" -C workx-cli
+          echo "WORKX_CLI_PACKAGE_DIR=$RUNNER_TEMP/workx-cli" >> "$GITHUB_ENV"
 
       - name: Build installers
         working-directory: workx-desktop

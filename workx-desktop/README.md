@@ -110,11 +110,36 @@ Installers are built with Electron Forge:
 The app icon lives in `assets/` (`icon.icns`, `icon.ico`, `icon.png`) and is
 applied through `packagerConfig.icon`.
 
-Packaged apps resolve the Workx CLI from `WORKX_BIN`, a bundled
-`Resources/bin/workx`, the Homebrew locations (`/opt/homebrew/bin/workx`,
-`/usr/local/bin/workx`), then `PATH`. macOS GUI apps do not inherit the shell
-`PATH`, so the explicit Homebrew paths are required for
-`brew install --cask workx`.
+### Bundled CLI
+
+The Windows installer ships the Workx CLI, so installing the app is enough — no
+separate `install.ps1` run and no PATH dependency. Point `npm run make` at a
+canonical package directory built by `scripts/build_workx_package.py`:
+
+```sh
+WORKX_CLI_PACKAGE_DIR=<workx-package directory> \
+  npm run make -- --platform=win32 --arch=x64
+```
+
+`packagerConfig.extraResource` copies that directory into the app's `Resources`
+folder, which is where the client looks for the CLI. The whole package layout is
+bundled, not just the entrypoint: the CLI resolves `workx-resources/`,
+`workx-path/`, and `workx-package.json` relative to its own executable, so
+`bin/workx.exe` only finds `rg`, the code-mode host, and the Windows sandbox
+helpers when those stay next to it. Leave the variable unset to package an app
+without a bundled CLI; packaging fails if it points at a directory that is not a
+Workx package.
+
+The release workflows download `workx-package-x86_64-pc-windows-msvc.tar.gz`
+from the release and set the variable. macOS builds never set it, because the
+cask depends on the `workx` Homebrew formula instead.
+
+Packaged apps resolve the Workx CLI from `WORKX_BIN`, the bundled
+`Resources/bin/workx`, then the per-platform install locations — the Homebrew
+paths (`/opt/homebrew/bin/workx`, `/usr/local/bin/workx`) on macOS and
+`%LOCALAPPDATA%\Programs\OpenAI\Workx\bin` plus `%LOCALAPPDATA%\Workx\bin`
+on Windows — and finally `PATH`. macOS GUI apps do not inherit the shell `PATH`,
+so the explicit Homebrew paths are required for `brew install --cask workx`.
 
 Code signing is optional. Set `APPLE_IDENTITY`, `APPLE_ID`,
 `APPLE_APP_PASSWORD`, and `APPLE_TEAM_ID` for macOS signing/notarization, or
