@@ -21,6 +21,13 @@ $PreferReleasesOpenAICom = if ([string]::IsNullOrWhiteSpace($env:WORKX_INSTALLER
 $ReleasesBaseUri = "https://releases.openai.com/codex"
 $ReleasesMetadataTimeoutSec = 30
 $ReleasesAssetTimeoutSec = 300
+$DownloadAttempts = 3
+
+# Windows PowerShell 5.1 defaults to legacy TLS on older .NET Framework builds, which makes
+# GitHub and releases.openai.com requests fail behind some proxies.
+if ($PSVersionTable.PSEdition -eq "Desktop") {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+}
 
 function Write-Step {
     param(
@@ -110,6 +117,31 @@ function Find-ReleaseAssetMetadata {
     }
 }
 
+function Invoke-DownloadWithRetry {
+    param(
+        [string]$Uri,
+        [string]$OutFile,
+        [int]$TimeoutSec = 0
+    )
+
+    for ($attempt = 1; $attempt -le $DownloadAttempts; $attempt++) {
+        try {
+            if ($TimeoutSec -gt 0) {
+                Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile -TimeoutSec $TimeoutSec
+            } else {
+                Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile
+            }
+            return
+        } catch {
+            if ($attempt -eq $DownloadAttempts) {
+                throw
+            }
+            Write-WarningStep "Download attempt $attempt of $DownloadAttempts failed for $Uri; retrying."
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
+}
+
 function Invoke-WebRequestWithFallback {
     param(
         [object]$Metadata,
@@ -122,9 +154,9 @@ function Invoke-WebRequestWithFallback {
 
     try {
         if ($Metadata.Url.StartsWith("$ReleasesBaseUri/", [System.StringComparison]::OrdinalIgnoreCase)) {
-            Invoke-WebRequest -UseBasicParsing -Uri $Metadata.Url -OutFile $OutFile -TimeoutSec $ReleasesAssetTimeoutSec
+            Invoke-DownloadWithRetry -Uri $Metadata.Url -OutFile $OutFile -TimeoutSec $ReleasesAssetTimeoutSec
         } else {
-            Invoke-WebRequest -UseBasicParsing -Uri $Metadata.Url -OutFile $OutFile
+            Invoke-DownloadWithRetry -Uri $Metadata.Url -OutFile $OutFile
         }
         Test-ArchiveDigest -ArchivePath $OutFile -ExpectedDigest $ExpectedDigest
         if (-not [string]::IsNullOrWhiteSpace($RequiredManifestAsset)) {
@@ -135,7 +167,7 @@ function Invoke-WebRequestWithFallback {
             throw
         }
         Write-WarningStep "Could not download or verify $($Metadata.Url); retrying from GitHub Releases."
-        Invoke-WebRequest -UseBasicParsing -Uri $Metadata.FallbackUrl -OutFile $OutFile
+        Invoke-DownloadWithRetry -Uri $Metadata.FallbackUrl -OutFile $OutFile
         try {
             Test-ArchiveDigest -ArchivePath $OutFile -ExpectedDigest $ExpectedDigest
             if (-not [string]::IsNullOrWhiteSpace($RequiredManifestAsset)) {
