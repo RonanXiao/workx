@@ -392,11 +392,26 @@ jobs:
           - macOS arm64: \`Workx-$version-arm64.dmg\`
           - Windows x64: \`Workx-$version-x64-Setup.exe\`
 
-          Install the desktop app and CLI on macOS:
+          Install the CLI on macOS with Homebrew:
 
           \`\`\`
+          brew tap ronanxiao/workx
+          brew trust ronanxiao/workx
+          brew install workx
+          \`\`\`
+
+          \`workx\` lives in a third-party tap, so run \`brew tap\` and
+          \`brew trust\` once before installing or upgrading.
+
+          Install the desktop app on macOS with Homebrew:
+
+          \`\`\`
+          brew tap ronanxiao/workx
+          brew trust ronanxiao/workx
           brew install --cask workx
           \`\`\`
+
+          The cask depends on the \`workx\` formula, so it also installs the CLI.
 
           Install on Windows (PowerShell):
 
