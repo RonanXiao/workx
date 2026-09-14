@@ -80,7 +80,7 @@ jobs:
             echo "build_ref=$build_ref"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.resolve.outputs.build_ref }}
 
@@ -116,7 +116,7 @@ jobs:
             platform: win32
             arch: x64
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.build_ref }}
 
@@ -247,13 +247,13 @@ jobs:
 
       - name: Checkout Workx release tools
         if: env.HOMEBREW_TAP_TOKEN != ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
 
       - name: Checkout Homebrew tap
         if: env.HOMEBREW_TAP_TOKEN != ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.HOMEBREW_REPOSITORY }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
