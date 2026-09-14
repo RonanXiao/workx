@@ -113,6 +113,7 @@ export function Sidebar({
   const [searchOpen, setSearchOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [showAllProjectThreads, setShowAllProjectThreads] = useState<Set<string>>(new Set());
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [projectsMenuOpen, setProjectsMenuOpen] = useState(false);
   const [organize, setOrganize] = useState<ProjectOrganize>('project');
@@ -134,6 +135,18 @@ export function Sidebar({
       )?.id;
     if (projectId) {
       setExpandedProjects(new Set([projectId]));
+      const activeIndex =
+        projects
+          .find((candidate) => candidate.id === projectId)
+          ?.threads.findIndex((thread) => thread.id === activeThreadId) ?? -1;
+      if (activeIndex >= PROJECT_THREAD_LIMIT) {
+        setShowAllProjectThreads((current) => {
+          if (current.has(projectId)) {
+            return current;
+          }
+          return new Set(current).add(projectId);
+        });
+      }
     }
   }, [activeThreadId, draft, projects]);
 
@@ -153,6 +166,18 @@ export function Sidebar({
       return next;
     });
     onSelectProject(project.id);
+  };
+
+  const toggleProjectThreads = (projectId: string) => {
+    setShowAllProjectThreads((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
   };
 
   const renderThread = (thread: Thread, indent = false) => (
@@ -324,10 +349,22 @@ export function Sidebar({
 
                         {draft?.projectId === project.id ? <DraftThreadRow indent /> : null}
                         {expanded
-                          ? project.threads
-                              .slice(0, PROJECT_THREAD_LIMIT)
-                              .map((thread) => renderThread(thread, true))
+                          ? (showAllProjectThreads.has(project.id)
+                              ? project.threads
+                              : project.threads.slice(0, PROJECT_THREAD_LIMIT)
+                            ).map((thread) => renderThread(thread, true))
                           : null}
+                        {expanded && project.threads.length > PROJECT_THREAD_LIMIT ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleProjectThreads(project.id)}
+                            className="flex h-[30px] w-full items-center rounded-lg pl-[38px] text-left text-[13px] text-fg-tertiary hover:bg-hover"
+                          >
+                            {showAllProjectThreads.has(project.id)
+                              ? t('common.showLess')
+                              : t('common.showMore')}
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })}
