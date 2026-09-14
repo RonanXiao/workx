@@ -877,7 +877,16 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     exit 1
 }
 
-$architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+$processorArchitecture = if ([string]::IsNullOrWhiteSpace($env:PROCESSOR_ARCHITEW6432)) {
+    $env:PROCESSOR_ARCHITECTURE
+} else {
+    $env:PROCESSOR_ARCHITEW6432
+}
+$architecture = switch ($processorArchitecture) {
+    "AMD64" { "X64" }
+    "ARM64" { "Arm64" }
+    default { $processorArchitecture }
+}
 $target = $null
 $platformLabel = $null
 $npmTag = $null
