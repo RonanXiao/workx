@@ -1,11 +1,12 @@
 import {
+  ArrowLeft,
   Info,
   Palette,
   Server,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  X,
+  UserRound,
 } from 'lucide-react';
 import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from 'react';
 
@@ -25,6 +26,7 @@ import { ProviderSettings } from './ProviderSettings';
 
 export type SettingsSection =
   | 'general'
+  | 'personalization'
   | 'appearance'
   | 'model'
   | 'permission'
@@ -39,6 +41,7 @@ interface SettingsNavItem {
 
 const SECTIONS: SettingsNavItem[] = [
   { key: 'general', labelKey: 'settings.general', icon: SlidersHorizontal },
+  { key: 'personalization', labelKey: 'settings.personalization', icon: UserRound },
   { key: 'appearance', labelKey: 'settings.appearance', icon: Palette },
   { key: 'model', labelKey: 'settings.model', icon: Sparkles },
   { key: 'permission', labelKey: 'settings.permissions', icon: ShieldCheck },
@@ -89,11 +92,19 @@ export function SettingsPage(props: SettingsPageProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex bg-app text-fg">
-      <aside className="flex w-[224px] shrink-0 flex-col border-r border-line bg-sidebar">
-        <div className="flex h-11 shrink-0 items-center px-4 text-[15px] font-semibold">
-          {t('settings.title')}
+      <aside className="drag flex w-[224px] shrink-0 flex-col border-r border-line bg-sidebar">
+        <div className="h-11 shrink-0" />
+        <div className="shrink-0 px-2 pb-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="no-drag flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-fg-secondary hover:bg-hover hover:text-fg"
+          >
+            <ArrowLeft className="size-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">{t('settings.backToApp')}</span>
+          </button>
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {SECTIONS.map((item) => {
             const Icon = item.icon;
             const selected = item.key === section;
@@ -103,7 +114,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 type="button"
                 onClick={() => onSectionChange(item.key)}
                 className={cn(
-                  'mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px]',
+                  'no-drag mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px]',
                   selected ? 'bg-active text-fg' : 'text-fg-secondary hover:bg-hover hover:text-fg',
                 )}
               >
@@ -113,30 +124,13 @@ export function SettingsPage(props: SettingsPageProps) {
             );
           })}
         </nav>
-        <div className="shrink-0 border-t border-line p-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex w-full items-center justify-center rounded-lg px-2.5 py-2 text-[13px] text-fg-secondary hover:bg-hover hover:text-fg"
-          >
-            {t('settings.backToApp')}
-          </button>
-        </div>
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-5">
+        <header className="drag flex h-11 shrink-0 items-center gap-2 border-b border-line px-5">
           <h1 className="min-w-0 flex-1 truncate text-[14px] font-semibold">
             {t(active.labelKey)}
           </h1>
-          <button
-            type="button"
-            aria-label={t('common.close')}
-            onClick={onClose}
-            className="-mr-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-hover hover:text-fg"
-          >
-            <X className="size-4" strokeWidth={1.75} />
-          </button>
         </header>
 
         {section === 'providers' ? (
@@ -149,6 +143,9 @@ export function SettingsPage(props: SettingsPageProps) {
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             {section === 'general' ? <GeneralSection /> : null}
+            {section === 'personalization' ? (
+              <PersonalizationSection workxHome={props.serverInfo?.workxHome ?? null} />
+            ) : null}
             {section === 'appearance' ? (
               <AppearanceSection theme={props.theme} onThemeChange={props.onThemeChange} />
             ) : null}
@@ -305,6 +302,123 @@ function GeneralSection() {
           <Segmented value={language} options={LANGUAGE_OPTIONS} onChange={setLanguage} />
         </Row>
       </Group>
+    </SectionShell>
+  );
+}
+
+const INSTRUCTIONS_FILENAME = 'AGENTS.md';
+
+function instructionsPath(workxHome: string): string {
+  const separator = workxHome.includes('\\') ? '\\' : '/';
+  return `${workxHome.replace(/[\\/]+$/, '')}${separator}${INSTRUCTIONS_FILENAME}`;
+}
+
+function PersonalizationSection({ workxHome }: { workxHome: string | null }) {
+  const { t } = useI18n();
+  const [path, setPath] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!workxHome) {
+      setPath(null);
+      setDraft('');
+      return;
+    }
+    let active = true;
+    const target = instructionsPath(workxHome);
+    setPath(target);
+    setError(null);
+    void window.workx
+      .readTextFile(target)
+      .then((contents) => {
+        if (active) {
+          setDraft(contents ?? '');
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDraft('');
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [workxHome]);
+
+  const handleSave = async () => {
+    if (!path) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const written = await window.workx.writeTextFile(path, draft);
+      if (!written) {
+        setError(t('settings.instructionsSaveFailed'));
+        return;
+      }
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionShell
+      title={t('settings.personalization')}
+      description={t('settings.personalizationDescription')}
+    >
+      <section className="overflow-hidden rounded-2xl border border-line bg-elevated">
+        <div className="flex items-start justify-between gap-4 px-4 pb-3 pt-3.5">
+          <div className="min-w-0">
+            <div className="text-[14px]">{t('settings.instructions')}</div>
+            <div className="mt-0.5 text-[12px] leading-snug text-fg-tertiary">
+              {t('settings.instructionsDescription')}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            {saved ? (
+              <span className="text-[12px] text-fg-tertiary">{t('settings.saved')}</span>
+            ) : null}
+            <button
+              type="button"
+              disabled={!path || busy}
+              onClick={() => void handleSave()}
+              className="h-8 rounded-full bg-send px-4 text-[13px] text-send-fg disabled:opacity-60"
+            >
+              {busy ? t('provider.saving') : t('common.save')}
+            </button>
+          </div>
+        </div>
+        <div className="px-4 pb-4">
+          <textarea
+            value={draft}
+            disabled={!path}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={t('settings.instructionsPlaceholder')}
+            className="min-h-[12rem] w-full resize-y rounded-xl border border-line bg-app px-3 py-2 text-[13px] leading-relaxed outline-none placeholder:text-fg-tertiary focus:border-line-strong disabled:opacity-60"
+          />
+          {error ? <div className="mt-2 text-[12px] text-danger">{error}</div> : null}
+          {path ? (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="truncate text-[11px] text-fg-tertiary">
+                {t('settings.instructionsFile', { path })}
+              </span>
+              <button
+                type="button"
+                onClick={() => void window.workx.openPath(path)}
+                className="h-7 shrink-0 rounded-full border border-line px-3 text-[12px] text-fg-secondary hover:bg-hover"
+              >
+                {t('settings.openFolder')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </section>
     </SectionShell>
   );
 }

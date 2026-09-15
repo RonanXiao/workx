@@ -289,6 +289,16 @@ const en = {
   'settings.generalDescription': 'Language and other app-wide preferences.',
   'settings.appearance': 'Appearance',
   'settings.appearanceDescription': 'How Workx looks on this computer.',
+  'settings.personalization': 'Personalization',
+  'settings.personalizationDescription':
+    'Instructions and context Workx uses across your chats.',
+  'settings.instructions': 'Workx instructions',
+  'settings.instructionsDescription':
+    'Give Workx extra instructions and context for all chats. Project AGENTS.md files may also apply.',
+  'settings.instructionsPlaceholder':
+    'For example: keep answers short, and run the tests for the code you changed.',
+  'settings.instructionsFile': 'Saved to {path} and applied to new chats.',
+  'settings.instructionsSaveFailed': 'Could not save the instructions file.',
   'settings.permissions': 'Permissions',
   'settings.permissionsDescription':
     'Choose how much Workx can do on your computer. Applies to new messages.',
@@ -639,6 +649,14 @@ const zh: Record<MessageKey, string> = {
   'settings.generalDescription': '语言以及其他应用级偏好设置。',
   'settings.appearance': '外观',
   'settings.appearanceDescription': 'Workx 在这台电脑上的显示方式。',
+  'settings.personalization': '个性化',
+  'settings.personalizationDescription': 'Workx 在所有对话中使用的指令与上下文。',
+  'settings.instructions': 'Workx 指令',
+  'settings.instructionsDescription':
+    '为所有对话补充指令与上下文。项目中的 AGENTS.md 也可能同时生效。',
+  'settings.instructionsPlaceholder': '例如：回答尽量简洁，改动代码后运行相关测试。',
+  'settings.instructionsFile': '保存在 {path}，对新对话生效。',
+  'settings.instructionsSaveFailed': '无法保存指令文件。',
   'settings.permissions': '权限',
   'settings.permissionsDescription': '选择 Workx 在你电脑上的操作范围，对新消息生效。',
   'settings.providers': '提供方',
