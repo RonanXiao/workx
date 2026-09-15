@@ -38,6 +38,16 @@ function markdownToHtml(value: string): string {
   );
 }
 
+// Every message of a turn carries the turn duration, but the export reports it once per turn.
+function isLastMessageOfTurn(entries: TranscriptEntry[], index: number): boolean {
+  const entry = entries[index];
+  if (entry.kind !== 'assistant') {
+    return false;
+  }
+  const next = entries[index + 1];
+  return next === undefined || next.kind !== 'assistant' || next.turnId !== entry.turnId;
+}
+
 function activityLines(entry: Extract<TranscriptEntry, { kind: 'assistant' }>): string[] {
   return entry.activities.map((activity) =>
     activity.detail ? `- ${activity.label} — \`${activity.detail}\`` : `- ${activity.label}`,
@@ -51,7 +61,7 @@ export function buildMarkdown(
 ): string {
   const lines: string[] = [`# ${title}`, ''];
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     if (entry.kind === 'user') {
       const body =
         entry.text.trim() ||
@@ -71,7 +81,7 @@ export function buildMarkdown(
     }
 
     const meta: string[] = [];
-    if (!entry.active && entry.durationMs !== null) {
+    if (!entry.active && entry.durationMs !== null && isLastMessageOfTurn(entries, index)) {
       meta.push(
         `_${translate(language, 'message.workedFor', {
           duration: formatDuration(entry.durationMs),
@@ -144,7 +154,7 @@ export function buildExportHtml(
   const userLabel = translate(language, 'export.user');
   const workxLabel = translate(language, 'export.workx');
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     if (entry.kind === 'user') {
       const body =
         entry.text.trim() ||
@@ -165,7 +175,7 @@ export function buildExportHtml(
     if (body) {
       parts.push(markdownToHtml(body));
     }
-    if (!entry.active && entry.durationMs !== null) {
+    if (!entry.active && entry.durationMs !== null && isLastMessageOfTurn(entries, index)) {
       parts.push(
         `<p class="meta">${escapeHtml(
           translate(language, 'message.workedFor', {

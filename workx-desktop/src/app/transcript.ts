@@ -216,13 +216,13 @@ export function buildTranscript(
 
     // Only the newest message of a turn can still be working. Earlier messages of the same turn
     // already finished, and labelling them as in progress makes running and finished turns
-    // indistinguishable.
+    // indistinguishable. Every message reports the turn duration once the turn completes.
     const turnInProgress = turn.status === 'inProgress' || turn.status === null;
     for (const entry of turnEntries) {
       entry.status = turn.status;
+      entry.durationMs = turn.durationMs;
       entry.active = turnInProgress && entry === lastEntry;
     }
-    lastEntry.durationMs = turn.durationMs;
   }
 
   return entries;
