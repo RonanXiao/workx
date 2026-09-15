@@ -23,6 +23,7 @@ import type { Activity, ActivityIcon, TranscriptEntry } from '../app/transcript'
 import { cn } from '../lib/cn';
 import { useI18n, type MessageKey } from '../lib/i18n';
 import { FileChangeCard } from './FileChangeCard';
+import { ImageLightbox } from './ImageLightbox';
 import { Markdown } from './Markdown';
 
 const ACTIVITY_ICONS: Record<ActivityIcon, ComponentType<SVGProps<SVGSVGElement>>> = {
@@ -63,7 +64,9 @@ function loadImageSource(target: string): Promise<string | null> {
 }
 
 function UserImage({ source }: { source: string }) {
+  const { t } = useI18n();
   const [resolved, setResolved] = useState<string | null>(null);
+  const [preview, setPreview] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -81,11 +84,18 @@ function UserImage({ source }: { source: string }) {
     return null;
   }
   return (
-    <img
-      src={resolved}
-      alt=""
-      className="max-h-64 max-w-full rounded-xl border border-line object-contain"
-    />
+    <>
+      <button
+        type="button"
+        aria-label={t('message.viewImage')}
+        title={t('message.viewImage')}
+        onClick={() => setPreview(true)}
+        className="overflow-hidden rounded-xl border border-line hover:border-line-strong"
+      >
+        <img src={resolved} alt="" className="max-h-64 max-w-full object-contain" />
+      </button>
+      {preview ? <ImageLightbox source={resolved} onClose={() => setPreview(false)} /> : null}
+    </>
   );
 }
 

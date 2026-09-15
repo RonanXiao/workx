@@ -35,6 +35,7 @@ import { cn } from '../lib/cn';
 import { useI18n } from '../lib/i18n';
 import { ComposerMenu, type ComposerMenuItem, type ComposerMenuSection } from './ComposerMenu';
 import { IconButton } from './IconButton';
+import { ImageLightbox } from './ImageLightbox';
 import { Menu, MenuItem } from './Menu';
 import { threadTitle } from './Sidebar';
 
@@ -189,6 +190,7 @@ export function Composer({
   const [chatResults, setChatResults] = useState<Thread[]>([]);
   const [searching, setSearching] = useState(false);
   const [images, setImages] = useState<ComposerImage[]>([]);
+  const [previewImage, setPreviewImage] = useState<ComposerImage | null>(null);
   const [imageNotice, setImageNotice] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
@@ -264,6 +266,7 @@ export function Composer({
       }
       return current.filter((image) => image.id !== id);
     });
+    setPreviewImage((current) => (current?.id === id ? null : current));
   };
 
   useEffect(() => {
@@ -573,11 +576,15 @@ export function Composer({
           <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
             {images.map((image) => (
               <div key={image.id} className="relative">
-                <img
-                  src={image.previewUrl}
-                  alt={image.name}
-                  className="size-16 rounded-lg border border-line object-cover"
-                />
+                <button
+                  type="button"
+                  aria-label={t('message.viewImage')}
+                  title={t('message.viewImage')}
+                  onClick={() => setPreviewImage(image)}
+                  className="block size-16 overflow-hidden rounded-lg border border-line hover:border-line-strong"
+                >
+                  <img src={image.previewUrl} alt={image.name} className="size-full object-cover" />
+                </button>
                 <button
                   type="button"
                   aria-label={t('composer.removeImage')}
@@ -822,6 +829,12 @@ export function Composer({
           </div>
         </div>
       </form>
+      {previewImage ? (
+        <ImageLightbox
+          source={previewImage.previewUrl}
+          onClose={() => setPreviewImage(null)}
+        />
+      ) : null}
     </div>
   );
 }
