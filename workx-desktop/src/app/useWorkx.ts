@@ -733,6 +733,7 @@ export function useWorkx(): WorkxController {
   const threadIdRef = useRef<string | null>(null);
   const turnIdRef = useRef<string | null>(null);
   const modelRef = useRef<string | null>(null);
+  const providerRef = useRef<string | null>(null);
   const effortRef = useRef<string | null>(null);
   const permissionRef = useRef<PermissionMode>(
     PERMISSION_MODES.find((mode) => mode.id === 'full-access') ?? PERMISSION_MODES[0],
@@ -790,11 +791,20 @@ export function useWorkx(): WorkxController {
   }, [request]);
 
   const refreshModels = useCallback(async () => {
-    const response = await request<ModelListResponse>('model/list', {});
-    dispatch({ type: 'models', models: response.data });
+    const [listed, config] = await Promise.all([
+      request<ModelListResponse>('model/list', {}),
+      request<ConfigReadResponse>('config/read', {}),
+    ]);
+    dispatch({ type: 'models', models: listed.data });
     if (!modelRef.current) {
+      // The configured model is the last one the user picked, so a new chat keeps using it
+      // instead of falling back to the catalog default.
+      const configured = config.config.model;
       const preferred =
-        response.data.find((model) => model.isDefault) ?? response.data[0] ?? null;
+        (configured ? listed.data.find((model) => model.id === configured) : undefined) ??
+        listed.data.find((model) => model.isDefault) ??
+        listed.data[0] ??
+        null;
       if (preferred) {
         modelRef.current = preferred.id;
         setSelectedModelId(preferred.id);
@@ -803,6 +813,30 @@ export function useWorkx(): WorkxController {
       }
     }
   }, [request]);
+
+  const persistModelSelection = useCallback(
+    async (model: string, effort: string | null) => {
+      try {
+        await request('config/batchWrite', {
+          edits: [
+            { keyPath: 'model', value: model, mergeStrategy: 'replace' },
+            {
+              keyPath: 'model_reasoning_effort',
+              value: effort ?? null,
+              mergeStrategy: 'replace',
+            },
+          ],
+          reloadUserConfig: true,
+        });
+      } catch (error) {
+        dispatch({
+          type: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    [request],
+  );
 
   const refreshSlashCommands = useCallback(async () => {
     try {
@@ -844,6 +878,7 @@ export function useWorkx(): WorkxController {
     );
     const ids = Array.from(new Set([...Object.keys(raw), ...BUILTIN_MODEL_PROVIDER_IDS])).sort();
     setProviders(ids);
+    providerRef.current = response.config.model_provider ?? null;
     setProviderId(response.config.model_provider ?? null);
     return raw;
   }, []);
@@ -1004,6 +1039,7 @@ export function useWorkx(): WorkxController {
         projectId: projectId ?? undefined,
         runtimeWorkspaceRoots: projectWorkspaceRoots(projectsRef.current, projectId ?? null),
         model: modelRef.current ?? undefined,
+        modelProvider: providerRef.current ?? undefined,
         approvalPolicy: permissionRef.current.approvalPolicy,
         sandbox: permissionRef.current.sandbox,
       });
@@ -1146,6 +1182,18 @@ export function useWorkx(): WorkxController {
       if (thread.cwd && thread.cwd !== cwdRef.current) {
         cwdRef.current = thread.cwd;
         setCwd(thread.cwd);
+      }
+      // A reopened chat keeps working with the provider, model, and effort it already used
+      // instead of inheriting whatever the composer last showed.
+      if (thread.model) {
+        modelRef.current = thread.model;
+        setSelectedModelId(thread.model);
+      }
+      effortRef.current = thread.reasoningEffort ?? null;
+      setEffortId(thread.reasoningEffort ?? null);
+      if (thread.modelProvider) {
+        providerRef.current = thread.modelProvider;
+        setProviderId(thread.modelProvider);
       }
       dispatch({
         type: 'thread',
@@ -1327,6 +1375,7 @@ export function useWorkx(): WorkxController {
           projectsRef.current,
           activeProjectIdRef.current,
         ),
+        model: modelRef.current ?? undefined,
         effort: effortRef.current ?? undefined,
       });
       if (selection !== selectionRef.current) {
@@ -1848,15 +1897,18 @@ export function useWorkx(): WorkxController {
       modelRef.current = id;
       setSelectedModelId(id);
       const model = state.models.find((candidate) => candidate.id === id);
-      if (model) {
-        effortRef.current = model.defaultReasoningEffort ?? null;
-        setEffortId(model.defaultReasoningEffort ?? null);
-      }
+      const effort = model ? (model.defaultReasoningEffort ?? null) : effortRef.current;
+      effortRef.current = effort;
+      setEffortId(effort);
+      void persistModelSelection(id, effort);
     },
     selectedEffort: effortId,
     setEffort: (effort) => {
       effortRef.current = effort;
       setEffortId(effort);
+      if (modelRef.current) {
+        void persistModelSelection(modelRef.current, effort);
+      }
     },
     providerId,
     providers,
