@@ -21,8 +21,9 @@ name: desktop-release
 #      `workx-package-x86_64-pc-windows-msvc.tar.gz`.
 #   2. Re-uploads them with `--clobber` and refreshes `workx-package_SHA256SUMS`,
 #      which covers the desktop assets too.
-#   3. Updates the Homebrew cask checksum so `brew install --cask workx` keeps
-#      working. Skipped when the HOMEBREW_TAP_TOKEN secret is not configured.
+#   3. Re-points the Homebrew cask at this version. The cask declares
+#      `sha256 :no_check`, so replacing a DMG under an existing version does not
+#      invalidate it. Skipped when HOMEBREW_TAP_TOKEN is not configured.
 #
 # The desktop build steps below mirror `build-desktop` in release.yml. Keep the
 # two in sync when the packaging setup changes.
@@ -259,8 +260,6 @@ jobs:
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       VERSION: ${{ needs.resolve.outputs.version }}
-      TAG: ${{ needs.resolve.outputs.tag }}
-      GH_REPO: ${{ github.repository }}
       HOMEBREW_REPOSITORY: RonanXiao/homebrew-workx
       HOMEBREW_CASK_PATH: homebrew-workx/Casks/workx.rb
     steps:
@@ -286,23 +285,12 @@ jobs:
       - name: Update cask and push
         if: env.HOMEBREW_TAP_TOKEN != ''
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          assets_dir="$(mktemp -d)"
-          cd "$assets_dir"
-          gh release download "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "Workx-${VERSION}-arm64.dmg"
-          dmg_sha="$(sha256sum "Workx-${VERSION}-arm64.dmg" | awk '{print $1}')"
-
-          cd "$GITHUB_WORKSPACE"
           python3 scripts/update_homebrew_cask.py \
             --cask "$HOMEBREW_CASK_PATH" \
-            --version "$VERSION" \
-            --sha256 "$dmg_sha"
+            --version "$VERSION"
 
           cd homebrew-workx
           git config user.name "github-actions[bot]"

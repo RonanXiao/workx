@@ -504,11 +504,6 @@ jobs:
             --pattern 'workx-package-aarch64-apple-darwin.tar.gz'
           arm64_sha="$(sha256sum workx-package-aarch64-apple-darwin.tar.gz | awk '{print $1}')"
 
-          gh release download "$TAG" \
-            --repo "${{ github.repository }}" \
-            --pattern "Workx-${VERSION}-arm64.dmg"
-          dmg_sha="$(sha256sum "Workx-${VERSION}-arm64.dmg" | awk '{print $1}')"
-
           curl -fsSL \
             "https://github.com/${{ github.repository }}/archive/refs/tags/$TAG.tar.gz" \
             -o source.tar.gz
@@ -524,8 +519,7 @@ jobs:
 
           python3 scripts/update_homebrew_cask.py \
             --cask "$HOMEBREW_CASK_PATH" \
-            --version "$VERSION" \
-            --sha256 "$dmg_sha"
+            --version "$VERSION"
 
           cd homebrew-workx
           git config user.name "github-actions[bot]"
