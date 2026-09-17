@@ -60,6 +60,7 @@ function storedTurnThread(provider: string): Thread {
 function createBridge(scenario: ResumeScenario): WorkxBridge {
   // Mirrors the config file the app-server would hand back through `config/read`.
   const config = { provider: 'alpha', model: 'alpha-catalog-model' };
+  const providers: Record<string, unknown> = { alpha: { name: 'Alpha' }, beta: { name: 'Beta' } };
   let writerBusy = scenario.writerBusyOnce === true;
   const request = async (method: string, params?: unknown): Promise<unknown> => {
     switch (method) {
@@ -68,12 +69,16 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
           config: {
             model: config.model,
             model_provider: config.provider,
-            model_providers: { alpha: { name: 'Alpha' }, beta: { name: 'Beta' } },
+            model_providers: providers,
           },
         };
       case 'config/batchWrite': {
         const { edits } = params as { edits: { keyPath: string; value: unknown }[] };
         for (const edit of edits) {
+          const keys = edit.keyPath.split('.');
+          if (keys[0] === 'model_providers' && keys.length === 2) {
+            providers[keys[1]] = edit.value;
+          }
           if (edit.keyPath === 'model_provider') {
             config.provider = String(edit.value);
           }
@@ -318,6 +323,20 @@ async function renderWorkx(bridge: WorkxBridge): Promise<void> {
   });
   await waitFor(() => latest?.status === 'ready', 'app-server boot');
 }
+
+describe('local providers', () => {
+  it.each(['lmstudio', 'ollama'])('loads and persists editable %s configuration', async (id) => {
+    await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
+    expect(controller().providers).toEqual(['alpha', 'beta', 'lmstudio', 'ollama']);
+    const saved = {
+      ...controller().providerConfigs[id],
+      name: 'Local server', baseUrl: 'http://192.168.1.2:8080/v1',
+      wireApi: 'chat' as const, apiKey: 'local-secret', modelsEndpoint: '/models',
+    };
+    await act(async () => { await controller().saveProvider(id, saved); });
+    expect(controller().providerConfigs[id]).toEqual(saved);
+  });
+});
 
 describe('read-only threads', () => {
   it('opens a thread whose provider was removed and keeps it read-only', async () => {

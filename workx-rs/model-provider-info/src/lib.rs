@@ -596,9 +596,8 @@ pub fn built_in_model_providers(
 
 /// Merge configured providers into the built-in provider catalog.
 ///
-/// Configured providers extend the built-in set. Built-in providers are not
-/// generally overridable, but built-in Amazon Bedrock providers allow the user
-/// to customize their endpoint, authentication, headers, and AWS settings.
+/// 配置中的 provider 扩展内置集合，并可替换 LM Studio 和 Ollama。
+/// Amazon Bedrock 仅允许覆盖 endpoint、认证、headers 和 AWS 设置。
 pub fn merge_configured_model_providers(
     mut model_providers: HashMap<String, ModelProviderInfo>,
     configured_model_providers: HashMap<String, ModelProviderInfo>,
@@ -633,6 +632,11 @@ other non-default provider fields are not supported"
                         .extend(http_headers_override);
                 }
             }
+        } else if matches!(
+            key.as_str(),
+            LMSTUDIO_OSS_PROVIDER_ID | OLLAMA_OSS_PROVIDER_ID
+        ) {
+            model_providers.insert(key, provider);
         } else {
             model_providers.entry(key).or_insert(provider);
         }

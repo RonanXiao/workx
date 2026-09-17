@@ -1,0 +1,89 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`edits and saves the built-in lmstudio provider 1`] = `
+{
+  "buttons": [
+    "LM Studiolmstudio",
+    "Ollamaollama",
+    "Add provider",
+    "Check balance",
+    "Add model",
+    "Save",
+  ],
+  "fields": [
+    {
+      "disabled": false,
+      "readOnly": true,
+      "value": "lmstudio",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "LM Studio",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "http://localhost:1234/v1",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "",
+    },
+  ],
+  "note": [
+    "LM Studio and Ollama can be edited, but cannot be deleted. Changes are saved to your Workx configuration.",
+    "No custom models yet.",
+  ],
+}
+`;
+
+exports[`edits and saves the built-in ollama provider 1`] = `
+{
+  "buttons": [
+    "LM Studiolmstudio",
+    "Ollamaollama",
+    "Add provider",
+    "Check balance",
+    "Add model",
+    "Save",
+  ],
+  "fields": [
+    {
+      "disabled": false,
+      "readOnly": true,
+      "value": "ollama",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "Ollama",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "http://localhost:11434/v1",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "",
+    },
+    {
+      "disabled": false,
+      "readOnly": false,
+      "value": "",
+    },
+  ],
+  "note": [
+    "LM Studio and Ollama can be edited, but cannot be deleted. Changes are saved to your Workx configuration.",
+    "No custom models yet.",
+  ],
+}
+`;

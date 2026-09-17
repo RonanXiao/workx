@@ -426,6 +426,32 @@ fn test_merge_configured_model_providers_adds_custom_provider() {
 }
 
 #[test]
+fn test_merge_configured_local_providers_applies_saved_configuration() {
+    for provider_id in [LMSTUDIO_OSS_PROVIDER_ID, OLLAMA_OSS_PROVIDER_ID] {
+        let configured: ModelProviderInfo = toml::from_str(
+            r#"
+name = "Local inference"
+base_url = "http://192.168.1.2:8080/v1"
+wire_api = "chat"
+env_key = "LOCAL_API_KEY"
+models_endpoint = "/models"
+"#,
+        )
+        .unwrap();
+        let defaults = built_in_model_providers(/*openai_base_url*/ None);
+        let mut expected = defaults.clone();
+        expected.insert(provider_id.to_string(), configured.clone());
+        assert_eq!(
+            merge_configured_model_providers(
+                defaults,
+                std::collections::HashMap::from([(provider_id.to_string(), configured)]),
+            ),
+            Ok(expected)
+        );
+    }
+}
+
+#[test]
 fn test_merge_configured_model_providers_applies_amazon_bedrock_aws_override() {
     let auth_refresh = AwsAuthRefreshConfig {
         command: "aws".to_string(),

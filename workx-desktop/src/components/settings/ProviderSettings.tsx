@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import {
   BUILTIN_MODEL_PROVIDER_IDS,
+  LOCAL_MODEL_PROVIDER_DEFAULTS,
   REASONING_EFFORT_OPTIONS,
   type CustomModelConfig,
   type InputModality,
@@ -811,7 +812,7 @@ export function ProviderSettings({
 
           <div className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
             <div className="min-w-0">
-              {selectedId ? (
+              {selectedId && !Object.hasOwn(LOCAL_MODEL_PROVIDER_DEFAULTS, selectedId) ? (
                 confirmDelete ? (
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[12px] text-fg-secondary">

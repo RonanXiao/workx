@@ -81,6 +81,11 @@ export const BUILTIN_MODEL_PROVIDER_IDS = [
   'lmstudio',
 ];
 
+export const LOCAL_MODEL_PROVIDER_DEFAULTS = {
+  lmstudio: { name: 'LM Studio', base_url: 'http://localhost:1234/v1' },
+  ollama: { name: 'Ollama', base_url: 'http://localhost:11434/v1' },
+};
+
 export type ProviderWireApi = 'responses' | 'chat' | 'auto';
 
 export type InputModality = 'text' | 'image' | 'audio';
@@ -1041,10 +1046,11 @@ export function useWorkx(): WorkxController {
       (response.config.model_providers as Record<string, unknown> | undefined) ?? {};
     setProviderConfigs(
       Object.fromEntries(
-        Object.entries(raw).map(([id, value]) => [id, normalizeProviderConfig(value)]),
+        Object.entries({ ...LOCAL_MODEL_PROVIDER_DEFAULTS, ...raw })
+          .map(([id, value]) => [id, normalizeProviderConfig(value)]),
       ),
     );
-    const ids = Array.from(new Set([...Object.keys(raw), ...BUILTIN_MODEL_PROVIDER_IDS])).sort();
+    const ids = Array.from(new Set([...Object.keys(raw), ...Object.keys(LOCAL_MODEL_PROVIDER_DEFAULTS)])).sort();
     setProviders(ids);
     providerRef.current = response.config.model_provider ?? null;
     setProviderId(response.config.model_provider ?? null);
