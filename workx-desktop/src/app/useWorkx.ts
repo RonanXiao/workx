@@ -58,6 +58,7 @@ import {
   type ProjectDeleteResponse,
   type ProjectListResponse,
   type ProjectUpdateResponse,
+  type ThreadListRequestParams,
   type ThreadSearchResponse,
 } from './protocolExtensions';
 import { buildTranscript, textFromUserInput, type TranscriptEntry, type TurnView } from './transcript';
@@ -966,11 +967,14 @@ export function useWorkx(): WorkxController {
   }, [state.subAgents]);
 
   const refreshThreads = useCallback(async () => {
-    const response = await request<ThreadListResponse>('thread/list', {
-      limit: 200,
-      sortKey: 'recency_at',
-      sortDirection: 'desc',
-    });
+    const response = await request<ThreadListResponse>(
+      'thread/list',
+      {
+        limit: 200,
+        sortKey: 'recency_at',
+        sortDirection: 'desc',
+      } satisfies ThreadListRequestParams,
+    );
     const serverIds = new Set(response.data.map((thread) => thread.id));
     for (const id of serverIds) {
       pendingThreadsRef.current.delete(id);
@@ -993,13 +997,16 @@ export function useWorkx(): WorkxController {
       return;
     }
     try {
-      const response = await request<ThreadListResponse>('thread/list', {
-        ancestorThreadId: rootThreadId,
-        limit: 50,
-        sortKey: 'created_at',
-        sortDirection: 'desc',
-        useStateDbOnly: true,
-      });
+      const response = await request<ThreadListResponse>(
+        'thread/list',
+        {
+          ancestorThreadId: rootThreadId,
+          limit: 50,
+          sortKey: 'created_at',
+          sortDirection: 'desc',
+          useStateDbOnly: true,
+        } satisfies ThreadListRequestParams,
+      );
       if (requestId === subAgentRequestRef.current) {
         dispatch({ type: 'subAgents', threads: response.data, rootThreadId });
       }

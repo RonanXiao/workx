@@ -26,6 +26,8 @@ interface ResumeScenario {
   writerBusyOnce?: boolean;
   /** 该会话树下的子代理线程；`thread/list` 带 ancestorThreadId 时返回。 */
   subAgentThreads?: Thread[];
+  /** 记录桥接收到的请求，用于断言桌面端发出的 wire 参数。 */
+  recordedRequests?: Array<{ method: string; params?: unknown }>;
 }
 
 function threadSummary(provider: string): Thread {
@@ -66,6 +68,7 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
   const providers: Record<string, unknown> = { alpha: { name: 'Alpha' }, beta: { name: 'Beta' } };
   let writerBusy = scenario.writerBusyOnce === true;
   const request = async (method: string, params?: unknown): Promise<unknown> => {
+    scenario.recordedRequests?.push({ method, params });
     switch (method) {
       case 'config/read':
         return {
@@ -286,11 +289,13 @@ describe('subagent panel', () => {
       agentRole: 'worker',
       status: { type: 'active', activeFlags: [] },
     } as unknown as Thread;
-    const bridge = createBridge({
+    const scenario: ResumeScenario = {
       threadProvider: 'alpha',
       sessionProvider: 'alpha',
       subAgentThreads: [subagent],
-    });
+      recordedRequests: [],
+    };
+    const bridge = createBridge(scenario);
     // 捕获通知订阅，用于模拟 app-server 推送的子代理状态变化。
     const received: AppServerNotificationListener[] = [];
     bridge.appServer.onNotification = (listener) => {
@@ -304,6 +309,18 @@ describe('subagent panel', () => {
     await waitFor(() => controller().subAgents.length === 1, 'subagent list');
     expect(controller().subAgents).toEqual([subagent]);
     expect(controller().subAgentRootId).toBe(THREAD_ID);
+    // 生成类型不含 experimental 字段，这里固定桌面端发出的 wire 参数，避免字段名被改错。
+    expect(
+      scenario.recordedRequests
+        ?.filter((entry) => entry.method === 'thread/list')
+        .map((entry) => entry.params),
+    ).toContainEqual({
+      ancestorThreadId: THREAD_ID,
+      limit: 50,
+      sortKey: 'created_at',
+      sortDirection: 'desc',
+      useStateDbOnly: true,
+    });
 
     await act(async () => {
       for (const handler of received) {
