@@ -322,18 +322,16 @@ jobs:
             echo "WINDOWS_CERTIFICATE_PASSWORD=$WINDOWS_CERTIFICATE_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      # The Windows installer bundles the CLI so it works without a separate
-      # `install.ps1` run. Reuse the package this release already publishes
-      # instead of rebuilding the CLI here. macOS keeps resolving the CLI from
-      # the Homebrew formula its cask depends on.
       - name: Unpack the CLI to bundle
-        if: matrix.platform == 'win32'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           archive="workx-package-x86_64-pc-windows-msvc.tar.gz"
+          if [[ '${{ matrix.platform }}' == 'darwin' ]]; then
+            archive="workx-package-aarch64-apple-darwin.tar.gz"
+          fi
           # `tar` reads the drive letter in `$RUNNER_TEMP` as a remote host, so
           # extract there using relative paths.
           cd "$RUNNER_TEMP"

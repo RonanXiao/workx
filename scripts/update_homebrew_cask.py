@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Write or update the Homebrew cask for the Workx desktop app.
 
-The cask installs the desktop app and depends on the `workx` formula so a
-single `brew install --cask workx` provides both the app and the CLI. The file
-is created from the bundled template when the tap does not have it yet.
+The desktop app bundles its own CLI. The terminal CLI formula is optional.
+The file is created from the bundled template when the tap does not have it yet.
 
 The cask intentionally declares `sha256 :no_check`. Desktop installers are
 republished under an existing release tag whenever the desktop client changes,
@@ -30,7 +29,6 @@ TEMPLATE = """cask "workx" do
   desc "Independent coding agent derived from OpenAI Codex"
   homepage "https://github.com/RonanXiao/workx"
 
-  depends_on formula: "workx"
   depends_on macos: :monterey
 
   app "Workx.app"
@@ -56,6 +54,11 @@ def update_cask(cask: Path, version: str) -> bool:
     if version_count != 1:
         raise RuntimeError("Could not find exactly one version line in cask.")
     text, sha_count = SHA256_LINE.subn(rf"\g<1>{NO_CHECK}", text, count=1)
+    text = re.sub(
+        r'(?m)^[ \t]*depends_on formula: "(?:ronanxiao/workx/)?workx"[^\S\n]*\n',
+        "",
+        text,
+    )
     if sha_count != 1:
         raise RuntimeError("Could not find exactly one sha256 line in cask.")
     if text == original:

@@ -112,8 +112,8 @@ applied through `packagerConfig.icon`.
 
 ### Bundled CLI
 
-The Windows installer ships the Workx CLI, so installing the app is enough — no
-separate `install.ps1` run and no PATH dependency. Point `npm run make` at a
+The macOS and Windows installers ship the Workx CLI, so installing the app is
+enough, without a separate CLI installation or PATH dependency. Point `npm run make` at a
 canonical package directory built by `scripts/build_workx_package.py`:
 
 ```sh
@@ -130,8 +130,12 @@ to package an app without a bundled CLI; packaging fails if it points at a
 directory that is not a Workx package.
 
 The release workflows download `workx-package-x86_64-pc-windows-msvc.tar.gz`
-from the release and set the variable. macOS builds never set it, because the
-cask depends on the `workx` Homebrew formula instead.
+or `workx-package-aarch64-apple-darwin.tar.gz` from the release and set the variable.
+For a local macOS build, use the matching package and `--platform=darwin --arch=arm64`.
+The bundled executables are included in the app's macOS signing pass.
+The Homebrew cask no longer depends on the CLI formula. Install the terminal CLI
+separately with `brew install --formula ronanxiao/workx/workx` if needed;
+desktop updates do not update that independent installation.
 
 The desktop app requires the Workx CLI. Packaged apps resolve it from
 `WORKX_BIN`, a bundled `Resources/bin/workx`, platform-specific install

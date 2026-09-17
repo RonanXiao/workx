@@ -105,6 +105,21 @@ describe('Workx CLI discovery', () => {
     expect(() => resolveWorkxBinary()).toThrow('Workx CLI not found');
   });
 
+  it('prefers the macOS bundled CLI over Homebrew without changing explicit overrides', () => {
+    const resources = '/Applications/Workx.app/Contents/Resources';
+    const bundled = `${resources}/bin/workx`;
+    const homebrew = '/opt/homebrew/bin/workx';
+    vi.stubGlobal('process', {
+      ...originalProcess, platform: 'darwin',
+      execPath: '/Applications/Workx.app/Contents/MacOS/Workx',
+      resourcesPath: resources, env: { PATH: '' },
+    });
+    addFile(bundled);
+    addFile(homebrew);
+    expect(resolveWorkxBinary()).toBe(bundled);
+    expect(resolveWorkxBinary(homebrew)).toBe(homebrew);
+  });
+
   it('keeps Homebrew discovery for macOS GUI launches', () => {
     vi.stubGlobal('process', {
       ...originalProcess, platform: 'darwin', execPath: '/Applications/Workx.app/Contents/MacOS/Workx',

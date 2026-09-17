@@ -38,14 +38,6 @@ const osxSign = appleIdentity
       optionsForFile: () => ({ hardenedRuntime: false }),
     };
 
-// A Windows installer bundles the Workx CLI so the app runs without a separate
-// CLI install. `WORKX_CLI_PACKAGE_DIR` points at a canonical package directory
-// built by `scripts/build_workx_package.py`, and packaging fails loudly when it
-// does not contain the layout the CLI expects. The whole layout is bundled, not
-// just the entrypoint: `bin/workx.exe` only finds `rg`, the code-mode host, and
-// the Windows sandbox helpers when `workx-resources/`, `workx-path/`, and
-// `workx-package.json` sit next to it. macOS leaves this unset and resolves the
-// CLI through the Homebrew formula its cask depends on.
 const cliPackageDir = process.env.WORKX_CLI_PACKAGE_DIR?.trim();
 const cliResources = cliPackageDir
   ? ['bin', 'workx-resources', 'workx-path', 'workx-package.json'].map((name) =>
