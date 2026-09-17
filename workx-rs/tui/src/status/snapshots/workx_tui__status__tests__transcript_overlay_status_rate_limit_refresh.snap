@@ -7,7 +7,7 @@ before:
 /status
 
 ╭──────────────────────────────────────────────────────────────────────────╮
-│  >_ Workx (v0.1.6)                                                       │
+│  >_ Workx (v0.1.7)                                                       │
 │                                                                          │
 │ Visit https://chatgpt.com/codex/settings/usage for up-to-date            │
 │ information on rate limits and credits                                   │
@@ -39,7 +39,7 @@ after:
 /status
 
 ╭───────────────────────────────────────────────────────────────────────────╮
-│  >_ Workx (v0.1.6)                                                        │
+│  >_ Workx (v0.1.7)                                                        │
 │                                                                           │
 │ Visit https://chatgpt.com/codex/settings/usage for up-to-date             │
 │ information on rate limits and credits                                    │

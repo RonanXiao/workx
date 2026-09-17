@@ -1,7 +1,7 @@
 {
   "name": "workx-desktop",
   "productName": "Workx",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Workx desktop client",
   "main": ".vite/build/main.js",
   "private": true,
