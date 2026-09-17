@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
 expression: rendered
 ---
 ╭─────────────────────────────────────╮
-│ >_ Workx (v0.1.5)                   │
+│ >_ Workx (v0.1.6)                   │
 │                                     │
 │ model:     gpt-5   /model to change │
 │ directory: /tmp/project             │
