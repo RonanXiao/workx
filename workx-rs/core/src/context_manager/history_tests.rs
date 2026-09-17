@@ -332,6 +332,7 @@ fn reference_context_item() -> TurnContextItem {
         network: None,
         file_system_sandbox_policy: None,
         model: "gpt-test".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         personality: None,
         collaboration_mode: None,

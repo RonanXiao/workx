@@ -75,6 +75,7 @@ fn turn_context_item(
         network: None,
         file_system_sandbox_policy: None,
         model: "gpt-5".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         personality: None,
         collaboration_mode: None,

@@ -279,6 +279,12 @@ mod rollout_reconstruction_tests;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PreviousTurnSettings {
     pub(crate) model: String,
+    /// Provider that served `model`.
+    ///
+    /// `None` means the value comes from a rollout recorded before this field
+    /// existed; callers must treat an unknown provider as different from the
+    /// active one.
+    pub(crate) model_provider_id: Option<String>,
     pub(crate) comp_hash: Option<String>,
     pub(crate) realtime_active: Option<bool>,
 }

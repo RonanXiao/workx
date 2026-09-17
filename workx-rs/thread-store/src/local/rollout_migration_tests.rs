@@ -1458,6 +1458,7 @@ async fn migration_compacts_subagent_prefix_and_does_not_project_it() {
                 network: None,
                 file_system_sandbox_policy: None,
                 model: "test-model".to_string(),
+                model_provider_id: None,
                 comp_hash: None,
                 personality: None,
                 collaboration_mode: None,

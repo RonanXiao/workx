@@ -282,6 +282,7 @@ pub(crate) async fn run_turn(
         .await;
     sess.set_previous_turn_settings(Some(PreviousTurnSettings {
         model: turn_context.model_info().slug.clone(),
+        model_provider_id: Some(turn_context.config.model_provider_id.clone()),
         comp_hash: turn_context.model_info().comp_hash.clone(),
         realtime_active: Some(turn_context.realtime_active),
     }))
@@ -1117,6 +1118,11 @@ async fn capture_current_model_fallback_step_context(
 /// Runs pre-sampling compaction against the previous model when its compaction compatibility
 /// hash changed or when switching to a smaller context-window model.
 ///
+/// Previous-model compaction replays the previous model through the provider shown in the
+/// current turn context, so it only runs when the previous turn used that same provider. A
+/// provider switch, or a previous turn recorded without provider metadata, leaves the turn to
+/// the current model's own compaction paths.
+///
 /// Returns `Err(_)` only when compaction was attempted and failed.
 async fn maybe_run_previous_model_inline_compact(
     sess: &Arc<Session>,
@@ -1127,6 +1133,11 @@ async fn maybe_run_previous_model_inline_compact(
     let Some(previous_turn_settings) = sess.previous_turn_settings().await else {
         return Ok(());
     };
+    if previous_turn_settings.model_provider_id.as_deref()
+        != Some(turn_context.config.model_provider_id.as_str())
+    {
+        return Ok(());
+    }
     let should_compact_for_comp_hash_change = comp_hash_changed(
         previous_turn_settings.comp_hash.as_deref(),
         turn_context.model_info().comp_hash.as_deref(),

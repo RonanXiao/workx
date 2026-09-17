@@ -3777,6 +3777,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
         network: None,
         file_system_sandbox_policy: None,
         model: previous_model.to_string(),
+        model_provider_id: None,
         comp_hash: None,
         personality: turn_context.personality(),
         collaboration_mode: Some(turn_context.collaboration_mode()),
@@ -3834,6 +3835,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
         session.previous_turn_settings().await,
         Some(PreviousTurnSettings {
             model: previous_model.to_string(),
+            model_provider_id: None,
             comp_hash: None,
             realtime_active: Some(turn_context.realtime_active),
         })
@@ -3878,6 +3880,7 @@ async fn thread_rollback_drops_last_turn_from_history() {
     sess.persist_rollout_items(&rollout_items).await;
     sess.set_previous_turn_settings(Some(PreviousTurnSettings {
         model: "stale-model".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         realtime_active: Some(tc.realtime_active),
     }))
@@ -4070,6 +4073,7 @@ async fn thread_rollback_recomputes_previous_turn_settings_and_reference_context
     .await;
     sess.set_previous_turn_settings(Some(PreviousTurnSettings {
         model: "stale-model".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         realtime_active: None,
     }))
@@ -4087,6 +4091,7 @@ async fn thread_rollback_recomputes_previous_turn_settings_and_reference_context
         sess.previous_turn_settings().await,
         Some(PreviousTurnSettings {
             model: tc.model_info().slug.clone(),
+            model_provider_id: Some(tc.config.model_provider_id.clone()),
             comp_hash: None,
             realtime_active: Some(tc.realtime_active),
         })
@@ -10430,6 +10435,7 @@ async fn build_initial_context_restates_realtime_start_when_reference_context_is
     turn_context.realtime_active = true;
     let previous_turn_settings = PreviousTurnSettings {
         model: turn_context.model_info().slug.clone(),
+        model_provider_id: Some(turn_context.config.model_provider_id.clone()),
         comp_hash: None,
         realtime_active: Some(true),
     };
@@ -10756,6 +10762,7 @@ async fn build_initial_context_prepends_model_switch_message() {
     let (session, turn_context) = make_session_and_context().await;
     let previous_turn_settings = PreviousTurnSettings {
         model: "previous-regular-model".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         realtime_active: None,
     };
@@ -10810,6 +10817,7 @@ async fn record_context_updates_and_set_reference_context_item_persists_full_rei
     session
         .set_previous_turn_settings(Some(PreviousTurnSettings {
             model: previous_context.model_info().slug.clone(),
+            model_provider_id: Some(previous_context.config.model_provider_id.clone()),
             comp_hash: None,
             realtime_active: Some(previous_context.realtime_active),
         }))
@@ -11355,6 +11363,7 @@ async fn interrupting_compaction_fallback_retains_last_known_step_context() {
     session
         .set_previous_turn_settings(Some(PreviousTurnSettings {
             model: "gpt-5.4".to_string(),
+            model_provider_id: Some(turn.config.model_provider_id.clone()),
             comp_hash: Some("old".to_string()),
             realtime_active: Some(turn.realtime_active),
         }))

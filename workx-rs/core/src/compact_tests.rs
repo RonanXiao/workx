@@ -602,6 +602,7 @@ async fn process_compacted_history_reinjects_model_switch_message() {
     }];
     let previous_turn_settings = PreviousTurnSettings {
         model: "previous-regular-model".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         realtime_active: None,
     };

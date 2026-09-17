@@ -742,6 +742,7 @@ fn turn_context(root: &Path, turn_id: &str) -> RolloutItem {
         network: None,
         file_system_sandbox_policy: None,
         model: "test-model".to_string(),
+        model_provider_id: None,
         comp_hash: None,
         personality: None,
         collaboration_mode: None,

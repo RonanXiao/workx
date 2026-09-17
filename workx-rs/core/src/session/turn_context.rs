@@ -594,6 +594,7 @@ impl TurnContext {
             network: self.turn_context_network_item(),
             file_system_sandbox_policy: self.non_legacy_file_system_sandbox_policy(),
             model: self.model_info().slug.clone(),
+            model_provider_id: Some(self.config.model_provider_id.clone()),
             comp_hash: self.model_info().comp_hash.clone(),
             personality: self.personality(),
             collaboration_mode: Some(self.collaboration_mode()),

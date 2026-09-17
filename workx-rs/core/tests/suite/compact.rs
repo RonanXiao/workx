@@ -3022,6 +3022,104 @@ async fn pre_sampling_compact_keeps_unknown_previous_model_for_api_key_auth_and_
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pre_sampling_compact_skips_when_previous_turn_used_a_different_provider() {
+    skip_if_no_network!();
+
+    let server = MockServer::start().await;
+    let previous_model = "gpt-5.4";
+    let next_model = "gpt-5.2";
+    let previous_provider_id = "provider-a";
+    let next_provider_id = "provider-b";
+
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_optional_comp_hash(previous_model, Some("hash-a")),
+            model_info_with_optional_comp_hash(next_model, Some("hash-b")),
+        ],
+    };
+
+    // Only the two sampling requests are expected: a pre-sampling compaction request would
+    // consume the second response and leave the follow-up turn without one.
+    let request_log = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_assistant_message("m1", "before provider switch"),
+                ev_completed_with_tokens("r1", /*total_tokens*/ 100),
+            ]),
+            sse(vec![
+                ev_assistant_message("m2", "after provider switch"),
+                ev_completed_with_tokens("r2", /*total_tokens*/ 100),
+            ]),
+        ],
+    )
+    .await;
+
+    let first_provider = non_openai_model_provider(&server);
+    let first_catalog = model_catalog.clone();
+    let mut builder = test_workx()
+        .with_auth(WorkxAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_model(previous_model)
+        .with_config(move |config| {
+            config.model_provider = first_provider;
+            config.model_provider_id = previous_provider_id.to_string();
+            config.model_catalog = Some(first_catalog);
+            set_test_compact_prompt(config);
+        });
+    let test = builder.build(&server).await.expect("build test workx");
+
+    test.workx
+        .start_or_steer_turn(disabled_permission_user_turn(
+            "before provider switch",
+            test.cwd.path().to_path_buf(),
+            previous_model.to_string(),
+        ))
+        .await
+        .expect("submit first user turn");
+    wait_for_event(&test.workx, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    let next_provider = non_openai_model_provider(&server);
+    let mut resume_builder = test_workx()
+        .with_auth(WorkxAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_model(next_model)
+        .with_config(move |config| {
+            config.model_provider = next_provider;
+            config.model_provider_id = next_provider_id.to_string();
+            config.model_catalog = Some(model_catalog);
+            set_test_compact_prompt(config);
+        });
+    let resumed = resume_builder.restart(&server, &test).await.unwrap();
+
+    resumed
+        .workx
+        .start_or_steer_turn(disabled_permission_user_turn(
+            "after provider switch",
+            resumed.cwd.path().to_path_buf(),
+            next_model.to_string(),
+        ))
+        .await
+        .expect("submit next-provider turn");
+    wait_for_event(&resumed.workx, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    let models = request_log
+        .requests()
+        .iter()
+        .map(|request| request.body_json()["model"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        models,
+        vec![json!(previous_model), json!(next_model)],
+        "the previous provider's model must not be replayed for pre-sampling compaction"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pre_sampling_compact_skips_when_either_comp_hash_is_missing() {
     skip_if_no_network!();
 
