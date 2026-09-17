@@ -9,10 +9,13 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+import type { Thread } from '@protocol/v2/Thread';
+
 import { cn } from '../lib/cn';
 import { useI18n, type MessageKey } from '../lib/i18n';
 import { IconButton } from './IconButton';
 import { Menu, MenuItem } from './Menu';
+import { SubAgentsButton } from './SubAgentsButton';
 
 export type ConnectionStatus = 'connecting' | 'ready' | 'error' | 'stopped';
 
@@ -21,6 +24,10 @@ interface TopBarProps {
   subtitle?: string | null;
   status: ConnectionStatus;
   exportDisabled?: boolean;
+  subAgents: Thread[];
+  onSelectSubAgent: (threadId: string) => void;
+  onOpenAllSubAgents: () => void;
+  onRefreshSubAgents: () => void;
   explorerOpen: boolean;
   onToggleExplorer: () => void;
   reviewOpen: boolean;
@@ -41,6 +48,10 @@ export function TopBar({
   subtitle,
   status,
   exportDisabled = false,
+  subAgents,
+  onSelectSubAgent,
+  onOpenAllSubAgents,
+  onRefreshSubAgents,
   explorerOpen,
   onToggleExplorer,
   reviewOpen,
@@ -66,6 +77,14 @@ export function TopBar({
         <div className="mr-1 flex items-center gap-1.5 rounded-md px-2 text-[12px] text-fg-tertiary">
           <span className={cn('size-1.5 rounded-full', statusStyle.dot)} />
           {t(statusStyle.labelKey)}
+        </div>
+        <div className="mr-1.5">
+          <SubAgentsButton
+            subAgents={subAgents}
+            onSelect={onSelectSubAgent}
+            onOpenAll={onOpenAllSubAgents}
+            onRefresh={onRefreshSubAgents}
+          />
         </div>
         <div className="relative">
           <button

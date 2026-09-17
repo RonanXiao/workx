@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Thread } from '@protocol/v2/Thread';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, translate } from '../lib/i18n';
-import type { WorkxBridge } from '../preload';
+import type { AppServerNotification, WorkxBridge } from '../preload';
 import { useWorkx, type WorkxController } from './useWorkx';
 
 const THREAD_ID = '01a0a7e5-7354-7661-9386-8dcacd8b666c';
@@ -24,11 +24,14 @@ interface ResumeScenario {
   missingProvider?: string;
   /** resume 首次因另一个 writer 占用而失败，用于覆盖只读回退与重试。 */
   writerBusyOnce?: boolean;
+  /** 该会话树下的子代理线程；`thread/list` 带 ancestorThreadId 时返回。 */
+  subAgentThreads?: Thread[];
 }
 
 function threadSummary(provider: string): Thread {
   return {
     id: THREAD_ID,
+    parentThreadId: null,
     projectId: null,
     cwd: CWD,
     model: `${provider}-stored-model`,
@@ -99,6 +102,9 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
           ],
         };
       case 'thread/list':
+        if ((params as { ancestorThreadId?: string } | undefined)?.ancestorThreadId) {
+          return { data: scenario.subAgentThreads ?? [] };
+        }
         return { data: [threadSummary(scenario.threadProvider)] };
       case 'thread/resume': {
         // The scenario describes the session a resume with overrides ends up with. A plain
@@ -161,6 +167,8 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
     },
   } as unknown as WorkxBridge;
 }
+
+type AppServerNotificationListener = (notification: AppServerNotification) => void;
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -265,6 +273,53 @@ describe('queued message actions', () => {
     const [one, two, three] = controller().queuedMessages;
     await act(async () => { controller().reorderQueued([three.id, one.id, two.id]); });
     expect(controller().queuedMessages).toEqual([three, one, two]);
+  });
+});
+
+describe('subagent panel', () => {
+  it('lists the subagents of the open chat and follows their status changes', async () => {
+    const subagent = {
+      ...threadSummary('alpha'),
+      id: '01a0a7e5-7354-7661-9386-8dcacd8b8888',
+      parentThreadId: THREAD_ID,
+      agentNickname: 'worker-one',
+      agentRole: 'worker',
+      status: { type: 'active', activeFlags: [] },
+    } as unknown as Thread;
+    const bridge = createBridge({
+      threadProvider: 'alpha',
+      sessionProvider: 'alpha',
+      subAgentThreads: [subagent],
+    });
+    // 捕获通知订阅，用于模拟 app-server 推送的子代理状态变化。
+    const received: AppServerNotificationListener[] = [];
+    bridge.appServer.onNotification = (listener) => {
+      received.push(listener);
+      return () => undefined;
+    };
+    await renderWorkx(bridge);
+    await act(async () => {
+      await controller().openThread(THREAD_ID);
+    });
+    await waitFor(() => controller().subAgents.length === 1, 'subagent list');
+    expect(controller().subAgents).toEqual([subagent]);
+    expect(controller().subAgentRootId).toBe(THREAD_ID);
+
+    await act(async () => {
+      for (const handler of received) {
+        handler({
+          method: 'thread/status/changed',
+          params: {
+            threadId: subagent.id,
+            status: { type: 'active', activeFlags: ['waitingOnUserInput'] },
+          },
+        });
+      }
+    });
+    expect(controller().subAgents[0].status).toEqual({
+      type: 'active',
+      activeFlags: ['waitingOnUserInput'],
+    });
   });
 });
 

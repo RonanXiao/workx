@@ -441,6 +441,19 @@ export function App() {
           onToggleReview={() => setReviewOpen((open) => !open)}
           onExportPdf={() => void exportChat('pdf')}
           onExportMarkdown={() => void exportChat('markdown')}
+          subAgents={workx.subAgents}
+          onSelectSubAgent={(id) => {
+            setActiveNav(null);
+            void workx.openThread(id);
+          }}
+          onOpenAllSubAgents={() => {
+            const rootId = workx.subAgentRootId;
+            if (rootId) {
+              setActiveNav(null);
+              void workx.openThread(rootId);
+            }
+          }}
+          onRefreshSubAgents={() => void workx.refreshSubAgents()}
         />
 
         {panel ? (

@@ -416,6 +416,10 @@ export interface WorkxController {
   recents: Thread[];
   activeThread: Thread | null;
   draft: { projectId: string | null } | null;
+  /// 当前会话树的子 agent 线程，包含更深层后代，用于顶栏子代理面板。
+  subAgents: Thread[];
+  /// 当前会话树根线程 id；浏览子代理会话时保持不变。未打开会话时为 null。
+  subAgentRootId: string | null;
   transcript: TranscriptEntry[];
   pendingSteers: PendingSteer[];
   queuedMessages: QueuedMessage[];
@@ -494,6 +498,7 @@ export interface WorkxController {
   resolveApproval: (id: string | number, decision: 'accept' | 'decline') => Promise<void>;
   dismissError: () => void;
   refreshThreads: () => Promise<void>;
+  refreshSubAgents: () => Promise<void>;
 }
 
 interface State {
@@ -503,6 +508,8 @@ interface State {
   models: Model[];
   projects: Project[];
   threads: Thread[];
+  subAgents: Thread[];
+  subAgentRootId: string | null;
   activeThread: Thread | null;
   draft: { projectId: string | null } | null;
   readOnly: ReadOnlySession | null;
@@ -536,6 +543,8 @@ type Action =
   | { type: 'models'; models: Model[] }
   | { type: 'projects'; projects: Project[] }
   | { type: 'threads'; threads: Thread[] }
+  | { type: 'subAgents'; threads: Thread[]; rootThreadId: string | null }
+  | { type: 'subAgentUpdated'; thread: Thread }
   | { type: 'threadUpsert'; thread: Thread }
   | { type: 'draft'; projectId: string | null }
   | { type: 'thread'; thread: Thread; turns: TurnView[]; readOnly?: ReadOnlySession | null }
@@ -578,6 +587,8 @@ const initialState: State = {
   models: [],
   projects: [],
   threads: [],
+  subAgents: [],
+  subAgentRootId: null,
   activeThread: null,
   draft: null,
   readOnly: null,
@@ -813,6 +824,15 @@ function reducer(state: State, action: Action): State {
         activeThread:
           state.activeThread?.id === action.thread.id ? action.thread : state.activeThread,
       };
+    case 'subAgents':
+      return { ...state, subAgents: action.threads, subAgentRootId: action.rootThreadId };
+    case 'subAgentUpdated':
+      return {
+        ...state,
+        subAgents: state.subAgents.map((thread) =>
+          thread.id === action.thread.id ? action.thread : thread,
+        ),
+      };
     case 'threadRemoved':
       return {
         ...state,
@@ -919,6 +939,10 @@ export function useWorkx(): WorkxController {
   const selectionRef = useRef(0);
   const pendingStartRef = useRef<Promise<string> | null>(null);
   const pendingThreadsRef = useRef<Map<string, Thread>>(new Map());
+  const subAgentsRef = useRef<Thread[]>([]);
+  /// 子代理面板的锚点线程：会话树根线程。浏览子代理会话时保持不变。
+  const subAgentRootRef = useRef<string | null>(null);
+  const subAgentRequestRef = useRef(0);
 
   const permission = useMemo(
     () => PERMISSION_MODES.find((mode) => mode.id === permissionId) ?? PERMISSION_MODES[0],
@@ -937,6 +961,10 @@ export function useWorkx(): WorkxController {
     return window.workx.appServer.request<T>(method, params);
   }, []);
 
+  useEffect(() => {
+    subAgentsRef.current = state.subAgents;
+  }, [state.subAgents]);
+
   const refreshThreads = useCallback(async () => {
     const response = await request<ThreadListResponse>('thread/list', {
       limit: 200,
@@ -951,6 +979,33 @@ export function useWorkx(): WorkxController {
       type: 'threads',
       threads: [...pendingThreadsRef.current.values(), ...response.data],
     });
+  }, [request]);
+
+  /**
+   * 刷新子代理列表。查询以会话树根线程为祖先，因此子代理会话中嵌套的子代理也会列出。
+   * 不带 sourceKinds，否则 app-server 只会返回交互式会话。
+   */
+  const refreshSubAgents = useCallback(async () => {
+    const rootThreadId = subAgentRootRef.current;
+    const requestId = ++subAgentRequestRef.current;
+    if (!rootThreadId) {
+      dispatch({ type: 'subAgents', threads: [], rootThreadId: null });
+      return;
+    }
+    try {
+      const response = await request<ThreadListResponse>('thread/list', {
+        ancestorThreadId: rootThreadId,
+        limit: 50,
+        sortKey: 'created_at',
+        sortDirection: 'desc',
+        useStateDbOnly: true,
+      });
+      if (requestId === subAgentRequestRef.current) {
+        dispatch({ type: 'subAgents', threads: response.data, rootThreadId });
+      }
+    } catch {
+      // 子代理列表只用于展示；请求失败时保留上一次结果。
+    }
   }, [request]);
 
   const refreshProjects = useCallback(async () => {
@@ -1092,7 +1147,10 @@ export function useWorkx(): WorkxController {
       // composer must read the session fields.
       let resumedSession: { model: string; modelProvider: string; effort: string | null } | null = null;
       let readOnly: ReadOnlySession | null = null;
-      const projectId = threadsRef.current.find((candidate) => candidate.id === id)?.projectId ?? null;
+      const knownThread =
+        threadsRef.current.find((candidate) => candidate.id === id) ??
+        subAgentsRef.current.find((candidate) => candidate.id === id);
+      const projectId = knownThread?.projectId ?? null;
       try {
         if (overrides) {
           // Resuming with overrides rebuilds the session only when this connection is
@@ -1148,6 +1206,11 @@ export function useWorkx(): WorkxController {
       threadIdRef.current = thread.id;
       activeProjectIdRef.current = thread.projectId;
       turnIdRef.current = null;
+      // 顶层会话重设面板锚点；打开子代理会话时保留原锚点，面板继续列出它的兄弟代理。
+      if (thread.parentThreadId === null) {
+        subAgentRootRef.current = thread.id;
+      }
+      void refreshSubAgents();
       if (thread.cwd && thread.cwd !== cwdRef.current) {
         cwdRef.current = thread.cwd;
         setCwd(thread.cwd);
@@ -1186,7 +1249,7 @@ export function useWorkx(): WorkxController {
       }
       void loadGoal(thread.id);
     },
-    [loadGoal, request, t],
+    [loadGoal, refreshSubAgents, request, t],
   );
 
   // A session keeps the provider snapshot it was created with, so provider changes only
@@ -1329,10 +1392,15 @@ export function useWorkx(): WorkxController {
           setCwd(response.thread.cwd);
         }
         dispatch({ type: 'thread', thread: response.thread, turns: [] });
+        // 新建会话即新的会话树根，子代理面板以它为锚点。
+        if (response.thread.parentThreadId === null) {
+          subAgentRootRef.current = response.thread.id;
+        }
+        void refreshSubAgents();
       }
       return response.thread.id;
     },
-    [request],
+    [refreshSubAgents, request],
   );
 
   const beginThread = useCallback(
@@ -1340,6 +1408,8 @@ export function useWorkx(): WorkxController {
       const selection = ++selectionRef.current;
       threadIdRef.current = null;
       turnIdRef.current = null;
+      subAgentRootRef.current = null;
+      void refreshSubAgents();
       const project = projectsRef.current.find((candidate) => candidate.id === projectId);
       const primaryRoot = project?.roots[0]?.path;
       if (primaryRoot) {
@@ -1365,7 +1435,7 @@ export function useWorkx(): WorkxController {
         }
       }
     },
-    [startThread],
+    [refreshSubAgents, startThread],
   );
 
   const newThread = useCallback(() => beginThread(null), [beginThread]);
@@ -1997,6 +2067,9 @@ export function useWorkx(): WorkxController {
         case 'item/started': {
           const params = notification.params as ItemStartedNotification;
           dispatch({ type: 'item', turnId: params.turnId, item: params.item });
+          if (params.item.type === 'collabAgentToolCall') {
+            void refreshSubAgents();
+          }
           if (params.item.type === 'userMessage') {
             dispatch({
               type: 'steerSettled',
@@ -2008,6 +2081,9 @@ export function useWorkx(): WorkxController {
         case 'item/completed': {
           const params = notification.params as ItemCompletedNotification;
           dispatch({ type: 'item', turnId: params.turnId, item: params.item });
+          if (params.item.type === 'collabAgentToolCall') {
+            void refreshSubAgents();
+          }
           if (params.item.type === 'userMessage') {
             dispatch({
               type: 'steerSettled',
@@ -2035,7 +2111,7 @@ export function useWorkx(): WorkxController {
             durationMs: params.turn.durationMs,
             status: params.turn.status,
           });
-          void Promise.all([refreshThreads(), refreshProjects()]);
+          void Promise.all([refreshThreads(), refreshProjects(), refreshSubAgents()]);
           break;
         }
         case 'project/changed': {
@@ -2090,6 +2166,12 @@ export function useWorkx(): WorkxController {
           if (thread) {
             dispatch({ type: 'threadUpdated', thread: { ...thread, status: params.status } });
           }
+          const subAgent = subAgentsRef.current.find(
+            (candidate) => candidate.id === params.threadId,
+          );
+          if (subAgent) {
+            dispatch({ type: 'subAgentUpdated', thread: { ...subAgent, status: params.status } });
+          }
           break;
         }
         case 'thread/name/updated': {
@@ -2113,7 +2195,7 @@ export function useWorkx(): WorkxController {
           break;
       }
     },
-    [refreshProjects, refreshThreads],
+    [refreshProjects, refreshSubAgents, refreshThreads],
   );
 
   const handleServerRequest = useCallback(
@@ -2347,6 +2429,8 @@ export function useWorkx(): WorkxController {
     recents,
     activeThread: state.activeThread,
     draft: state.draft,
+    subAgents: state.subAgents,
+    subAgentRootId: state.subAgentRootId,
     transcript,
     pendingSteers: state.pendingSteers,
     queuedMessages: state.queuedMessages,
@@ -2415,5 +2499,6 @@ export function useWorkx(): WorkxController {
     resolveApproval,
     dismissError: () => dispatch({ type: 'error', message: null }),
     refreshThreads,
+    refreshSubAgents,
   };
 }
