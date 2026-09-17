@@ -25,6 +25,7 @@ import { cn } from '../../lib/cn';
 import { LANGUAGE_OPTIONS, useI18n, type MessageKey } from '../../lib/i18n';
 import type { ThemePreference } from '../../lib/theme';
 import { ProviderSettings } from './ProviderSettings';
+import { UpdateCheck } from './UpdateCheck';
 
 export type SettingsSection =
   | 'general'
@@ -653,6 +654,9 @@ function AboutSection({
       <Group title={t('settings.aboutApp')}>
         <Row label={t('settings.appVersion')}>
           <Value>{appInfo ? `${appInfo.name} ${appInfo.version}` : '—'}</Value>
+        </Row>
+        <Row label={t('settings.softwareUpdates')}>
+          <UpdateCheck />
         </Row>
         <Row label={t('settings.appServer')} description={serverInfo?.userAgent}>
           <Value>{statusLabel}</Value>

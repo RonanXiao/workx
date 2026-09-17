@@ -110,6 +110,15 @@ Installers are built with Electron Forge:
 The app icon lives in `assets/` (`icon.icns`, `icon.ico`, `icon.png`) and is
 applied through `packagerConfig.icon`.
 
+### Update checks
+
+Settings → About includes a manual **Check for updates** button. It checks the
+latest stable GitHub release against the desktop version and verifies that an
+installer exists for the current OS and architecture. The release-page button
+opens a browser; it does not install updates or restart the app. Homebrew users
+can update with `brew update && brew upgrade --cask ronanxiao/workx/workx`.
+Replacing an installer without changing its version does not trigger this check.
+
 ### Bundled CLI
 
 The macOS and Windows installers ship the Workx CLI, so installing the app is

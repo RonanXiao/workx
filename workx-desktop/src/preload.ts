@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type { InitializeResponse } from '@protocol/InitializeResponse';
+import type { UpdateCheckResult } from './shared/updates';
 
 type ThemeSource = 'light' | 'dark' | 'system';
 
@@ -125,6 +126,7 @@ const api = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('workx:pick-folder'),
   getTheme: (): Promise<ThemeSource> => ipcRenderer.invoke('workx:get-theme'),
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke('workx:get-app-info'),
+  checkForUpdates: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('workx:check-for-updates'),
   savePastedImage: (data: Uint8Array, extension: string): Promise<string | null> =>
     ipcRenderer.invoke('workx:save-pasted-image', data, extension),
   readImage: (target: string): Promise<string | null> =>

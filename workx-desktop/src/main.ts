@@ -5,6 +5,7 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
 import { registerAppServerIpc } from './main/appServer/ipc';
+import { checkForUpdates } from './main/updates';
 import {
   gitCommit,
   gitDiff,
@@ -106,6 +107,10 @@ ipcMain.handle('workx:pick-folder', async () => {
 });
 
 ipcMain.handle('workx:get-theme', () => nativeTheme.themeSource);
+
+ipcMain.handle('workx:check-for-updates', () => checkForUpdates({
+  version: app.getVersion(), platform: process.platform, arch: process.arch,
+}));
 
 ipcMain.handle('workx:get-app-info', () => ({
   name: app.getName(),
