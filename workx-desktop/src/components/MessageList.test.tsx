@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReadOnlySession } from '../app/useWorkx';
+import type { TranscriptEntry } from '../app/transcript';
 import { I18nProvider, LANGUAGE_STORAGE_KEY } from '../lib/i18n';
 import { MessageList } from './MessageList';
 
@@ -22,13 +23,16 @@ afterEach(async () => {
   host.remove();
 });
 
-async function renderList(readOnly: ReadOnlySession | null): Promise<ReturnType<typeof vi.fn>> {
+async function renderList(
+  readOnly: ReadOnlySession | null,
+  entries: TranscriptEntry[] = [],
+): Promise<ReturnType<typeof vi.fn>> {
   const onRetryWriter = vi.fn();
   await act(async () =>
     root.render(
       <I18nProvider>
         <MessageList
-          entries={[]}
+          entries={entries}
           running={false}
           error={null}
           warnings={[]}
@@ -66,4 +70,22 @@ it('asks to close the other app while another writer holds the thread', async ()
 it('shows no read-only banner for a writable thread', async () => {
   await renderList(null);
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each([
+  ['multiline curl', [
+    "curl 'https://example.com/' \\",
+    "  -H 'Accept: text/html,application/xhtml+xml' \\",
+    `  -b 'SESSION=${'0123456789abcdef'.repeat(128)}; IDS=${'12345_'.repeat(128)}' \\`,
+    "  -H 'User-Agent: Example Browser'",
+  ].join('\n')],
+  ['unbroken text', '长文本0123456789'.repeat(256)],
+])('preserves %s in a width-constrained wrapping bubble', async (_name, text) => {
+  await renderList(null, [{ kind: 'user', id: 'long-message', text, images: [] }]);
+  const bubble = host.querySelector('.bg-bubble');
+  expect(bubble?.textContent).toBe(text);
+  expect(bubble?.outerHTML.replace(text, '[message text]')).toMatchSnapshot();
+  expect(bubble?.parentElement?.className).toBe(
+    'flex min-w-0 max-w-[85%] flex-col items-end gap-2',
+  );
 });

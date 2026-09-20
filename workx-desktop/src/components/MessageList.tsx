@@ -142,7 +142,7 @@ export function MessageList({
       {entries.map((entry) =>
         entry.kind === 'user' ? (
           <div key={entry.id} className="flex justify-end">
-            <div className="flex max-w-[85%] flex-col items-end gap-2">
+            <div className="flex min-w-0 max-w-[85%] flex-col items-end gap-2">
               {entry.images.length > 0 ? (
                 <div className="flex flex-wrap justify-end gap-2">
                   {entry.images.map((source) => (
@@ -151,7 +151,7 @@ export function MessageList({
                 </div>
               ) : null}
               {entry.text ? (
-                <div className="whitespace-pre-wrap rounded-2xl bg-bubble px-4 py-2.5 text-[16px] leading-[1.5]">
+                <div className="min-w-0 max-w-full whitespace-pre-wrap rounded-2xl bg-bubble px-4 py-2.5 text-[16px] leading-[1.5] [overflow-wrap:anywhere]">
                   {entry.text}
                 </div>
               ) : null}
