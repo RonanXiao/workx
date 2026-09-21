@@ -70,6 +70,8 @@ interface SettingsPageProps {
   permission: PermissionMode;
   onPermissionChange: (mode: PermissionMode) => void;
   providerConfigs: Record<string, ProviderConfig>;
+  providerIds: string[];
+  onReorderProviders: (ids: string[]) => void;
   onSaveProvider: (id: string, config: ProviderConfig) => Promise<void>;
   onDeleteProvider: (id: string) => Promise<void>;
   onReadProviderBalance: (id: string | null) => Promise<ProviderBalanceView>;
@@ -141,6 +143,8 @@ export function SettingsPage(props: SettingsPageProps) {
         {section === 'providers' ? (
           <ProviderSettings
             providerConfigs={props.providerConfigs}
+            providerIds={props.providerIds}
+            onReorder={props.onReorderProviders}
             onSave={props.onSaveProvider}
             onDelete={props.onDeleteProvider}
             onReadBalance={props.onReadProviderBalance}

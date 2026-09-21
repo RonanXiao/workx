@@ -648,6 +648,8 @@ export function App() {
           permission={workx.permission}
           onPermissionChange={workx.setPermission}
           providerConfigs={workx.providerConfigs}
+          providerIds={workx.providers}
+          onReorderProviders={workx.reorderProviders}
           onSaveProvider={workx.saveProvider}
           onDeleteProvider={workx.deleteProvider}
           onReadProviderBalance={workx.readProviderBalance}

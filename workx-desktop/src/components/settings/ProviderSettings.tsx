@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { GripVertical, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import {
@@ -16,6 +16,10 @@ import { useI18n } from '../../lib/i18n';
 
 interface ProviderSettingsProps {
   providerConfigs: Record<string, ProviderConfig>;
+  /// provider 的展示顺序，由外部持有并持久化。
+  providerIds: string[];
+  /// 提交新的 provider 展示顺序。
+  onReorder: (ids: string[]) => void;
   onSave: (id: string, config: ProviderConfig) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onReadBalance: (id: string | null) => Promise<ProviderBalanceView>;
@@ -141,12 +145,15 @@ function draftFromConfig(id: string, config: ProviderConfig): ProviderDraft {
 
 export function ProviderSettings({
   providerConfigs,
+  providerIds,
+  onReorder,
   onSave,
   onDelete,
   onReadBalance,
 }: ProviderSettingsProps) {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProviderDraft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -155,11 +162,23 @@ export function ProviderSettings({
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const configuredIds = Object.keys(providerConfigs).sort();
+  const configuredIds = providerIds;
   const idPreview = draft.name.trim() ? providerIdFromName(draft.name, configuredIds) : '';
 
+  const move = (id: string, targetId: string) => {
+    const from = configuredIds.indexOf(id);
+    const to = configuredIds.indexOf(targetId);
+    if (from === -1 || to === -1 || from === to) {
+      return;
+    }
+    const ids = [...configuredIds];
+    ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    onReorder(ids);
+  };
+
   useEffect(() => {
-    const first = Object.keys(providerConfigs).sort()[0];
+    const first = providerIds[0];
     if (first) {
       setSelectedId(first);
       setDraft(draftFromConfig(first, providerConfigs[first]));
@@ -358,14 +377,38 @@ export function ProviderSettings({
                 <button
                   key={id}
                   type="button"
+                  draggable
+                  title={t('provider.reorderHint')}
                   onClick={() => select(id)}
+                  onDragStart={() => setDraggingId(id)}
+                  onDragEnd={() => setDraggingId(null)}
+                  onDragOver={(event) => {
+                    if (draggingId && draggingId !== id) {
+                      event.preventDefault();
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggingId && draggingId !== id) {
+                      move(draggingId, id);
+                    }
+                    setDraggingId(null);
+                  }}
                   className={cn(
-                    'flex w-full flex-col rounded-lg px-2.5 py-2 text-left',
+                    'flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left',
                     id === selectedId ? 'bg-active' : 'hover:bg-hover',
+                    draggingId === id && 'opacity-60',
                   )}
                 >
-                  <span className="truncate text-[13px]">{config.name || id}</span>
-                  <span className="truncate text-[11px] text-fg-tertiary">{id}</span>
+                  <GripVertical
+                    aria-hidden
+                    className="size-3.5 shrink-0 cursor-grab text-fg-tertiary"
+                    strokeWidth={1.75}
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-[13px]">{config.name || id}</span>
+                    <span className="truncate text-[11px] text-fg-tertiary">{id}</span>
+                  </span>
                 </button>
               );
             })}

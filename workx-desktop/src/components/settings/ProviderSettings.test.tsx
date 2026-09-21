@@ -26,11 +26,12 @@ afterEach(async () => {
 it.each(['lmstudio', 'ollama'])('edits and saves the built-in %s provider', async (id) => {
   const configs = Object.fromEntries(Object.entries(LOCAL_MODEL_PROVIDER_DEFAULTS)
     .map(([key, value]) => [key, normalizeProviderConfig(value)]));
+  const providerIds = Object.keys(configs).sort();
   const onSave = vi.fn().mockResolvedValue(undefined);
   await act(async () => root.render(
     <I18nProvider>
-      <ProviderSettings providerConfigs={configs} onSave={onSave}
-        onDelete={vi.fn()} onReadBalance={vi.fn()} />
+      <ProviderSettings providerConfigs={configs} providerIds={providerIds}
+        onReorder={vi.fn()} onSave={onSave} onDelete={vi.fn()} onReadBalance={vi.fn()} />
     </I18nProvider>,
   ));
   const providerButton = [...host.querySelectorAll('button')]
@@ -57,4 +58,28 @@ it.each(['lmstudio', 'ollama'])('edits and saves the built-in %s provider', asyn
   expect(onSave).toHaveBeenCalledWith(id, {
     ...configs[id], baseUrl: 'http://192.168.1.2:8080/v1',
   });
+});
+
+it('reorders providers by drag and drop', async () => {
+  const configs = Object.fromEntries(Object.entries(LOCAL_MODEL_PROVIDER_DEFAULTS)
+    .map(([key, value]) => [key, normalizeProviderConfig(value)]));
+  const onReorder = vi.fn();
+  await act(async () => root.render(
+    <I18nProvider>
+      <ProviderSettings providerConfigs={configs} providerIds={['lmstudio', 'ollama']}
+        onReorder={onReorder} onSave={vi.fn()} onDelete={vi.fn()} onReadBalance={vi.fn()} />
+    </I18nProvider>,
+  ));
+  const rows = [...host.querySelectorAll('[draggable="true"]')];
+  if (rows.length !== 2) {
+    throw new Error(`expected two draggable rows, found ${rows.length}`);
+  }
+  await act(async () => {
+    rows[0].dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+  });
+  await act(async () => {
+    rows[1].dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }));
+    rows[1].dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+  });
+  expect(onReorder).toHaveBeenCalledWith(['ollama', 'lmstudio']);
 });

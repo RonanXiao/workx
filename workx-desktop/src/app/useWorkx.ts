@@ -87,6 +87,9 @@ export const LOCAL_MODEL_PROVIDER_DEFAULTS = {
   ollama: { name: 'Ollama', base_url: 'http://localhost:11434/v1' },
 };
 
+/// provider 展示顺序的本地持久化键。顺序是展示层偏好，不写入 config.toml。
+export const PROVIDER_ORDER_STORAGE_KEY = 'workx.providerOrder';
+
 export type ProviderWireApi = 'responses' | 'chat' | 'auto';
 
 export type InputModality = 'text' | 'image' | 'audio';
@@ -137,6 +140,27 @@ export function providerDisplayName(
   configs: Record<string, ProviderConfig>,
 ): string {
   return configs[id]?.name?.trim() || id;
+}
+
+/// 读取持久化的 provider 顺序。键缺失、内容损坏或元素非法时返回空列表。
+export function readProviderOrder(): string[] {
+  try {
+    const raw = window.localStorage.getItem(PROVIDER_ORDER_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/// 按持久化顺序排列 provider：已记录的按记录顺序在前，未记录的按 ID 升序追加。
+export function orderProviderIds(ids: string[], order: string[]): string[] {
+  const ranked = order.filter((id) => ids.includes(id));
+  const rest = ids.filter((id) => !ranked.includes(id)).sort();
+  return [...ranked, ...rest];
 }
 
 /// Provider-owned balance endpoint used by `modelProvider/balance/read`.
@@ -405,6 +429,8 @@ export interface WorkxController {
   providerOptions: ProviderOption[];
   providerConfigs: Record<string, ProviderConfig>;
   providerBusy: boolean;
+  /// 用新的 ID 顺序替换 provider 展示顺序并持久化。
+  reorderProviders: (ids: string[]) => void;
   selectProvider: (id: string) => Promise<void>;
   saveProvider: (id: string, config: ProviderConfig) => Promise<void>;
   deleteProvider: (id: string) => Promise<void>;
@@ -907,6 +933,7 @@ export function useWorkx(): WorkxController {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
   const [providers, setProviders] = useState<string[]>([]);
+  const providerOrderRef = useRef<string[]>(readProviderOrder());
   const [providerConfigs, setProviderConfigs] = useState<Record<string, ProviderConfig>>({});
   const [providerBusy, setProviderBusy] = useState(false);
   const [effortId, setEffortId] = useState<string | null>(null);
@@ -1112,8 +1139,8 @@ export function useWorkx(): WorkxController {
           .map(([id, value]) => [id, normalizeProviderConfig(value)]),
       ),
     );
-    const ids = Array.from(new Set([...Object.keys(raw), ...Object.keys(LOCAL_MODEL_PROVIDER_DEFAULTS)])).sort();
-    setProviders(ids);
+    const ids = Array.from(new Set([...Object.keys(raw), ...Object.keys(LOCAL_MODEL_PROVIDER_DEFAULTS)]));
+    setProviders(orderProviderIds(ids, providerOrderRef.current));
     providerRef.current = response.config.model_provider ?? null;
     setProviderId(response.config.model_provider ?? null);
     return raw;
@@ -1122,6 +1149,17 @@ export function useWorkx(): WorkxController {
   const refreshProviders = useCallback(async () => {
     applyConfigRead(await request<ConfigReadResponse>('config/read', { includeLayers: true }));
   }, [applyConfigRead, request]);
+
+  const reorderProviders = useCallback((ids: string[]) => {
+    const ordered = Array.from(new Set(ids));
+    providerOrderRef.current = ordered;
+    try {
+      window.localStorage.setItem(PROVIDER_ORDER_STORAGE_KEY, JSON.stringify(ordered));
+    } catch {
+      // 顺序仅用于展示，写入失败时保留当前会话内已生效的顺序。
+    }
+    setProviders((current) => orderProviderIds(current, ordered));
+  }, []);
 
   // Reloads the model catalog for the active provider and repairs the persisted model.
   // A model the new provider does not list cannot be used, so it is replaced by the provider
@@ -2421,6 +2459,7 @@ export function useWorkx(): WorkxController {
     providerId,
     providers,
     providerOptions,
+    reorderProviders,
     providerConfigs,
     providerBusy,
     selectProvider,

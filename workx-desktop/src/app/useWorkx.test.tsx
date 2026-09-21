@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Thread } from '@protocol/v2/Thread';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, translate } from '../lib/i18n';
 import type { AppServerNotification, WorkxBridge } from '../preload';
-import { useWorkx, type WorkxController } from './useWorkx';
+import { PROVIDER_ORDER_STORAGE_KEY, useWorkx, type WorkxController } from './useWorkx';
 
 const THREAD_ID = '01a0a7e5-7354-7661-9386-8dcacd8b666c';
 const CWD = '/tmp/workx-desktop-resume-test';
@@ -180,6 +180,7 @@ let latest: WorkxController | null = null;
 beforeEach(() => {
   window.localStorage.removeItem('workx.followUpBehavior');
   window.localStorage.removeItem('workx.queueing');
+  window.localStorage.removeItem(PROVIDER_ORDER_STORAGE_KEY);
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   latest = null;
@@ -407,6 +408,24 @@ describe('local providers', () => {
     };
     await act(async () => { await controller().saveProvider(id, saved); });
     expect(controller().providerConfigs[id]).toEqual(saved);
+  });
+
+  it('applies the persisted provider order on boot', async () => {
+    window.localStorage.setItem(
+      PROVIDER_ORDER_STORAGE_KEY,
+      JSON.stringify(['ollama', 'beta']),
+    );
+    await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
+    // 已记录的排在前，未记录的按 ID 升序追加。
+    expect(controller().providers).toEqual(['ollama', 'beta', 'alpha', 'lmstudio']);
+  });
+
+  it('reorders providers and persists the custom order', async () => {
+    await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
+    await act(async () => { controller().reorderProviders(['ollama', 'beta', 'alpha']); });
+    expect(controller().providers).toEqual(['ollama', 'beta', 'alpha', 'lmstudio']);
+    expect(window.localStorage.getItem(PROVIDER_ORDER_STORAGE_KEY))
+      .toBe(JSON.stringify(['ollama', 'beta', 'alpha']));
   });
 });
 
