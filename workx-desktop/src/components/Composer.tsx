@@ -9,6 +9,7 @@ import {
   Plug,
   Plus,
   Puzzle,
+  RefreshCw,
   Settings2,
   Sparkles,
   Square,
@@ -22,7 +23,12 @@ import type { Model } from '@protocol/v2/Model';
 import type { PluginSummary } from '@protocol/v2/PluginSummary';
 import type { SkillMetadata } from '@protocol/v2/SkillMetadata';
 import type { Thread } from '@protocol/v2/Thread';
-import type { FollowUpBehavior, ProviderOption, QueuedMessage } from '../app/useWorkx';
+import type {
+  FollowUpBehavior,
+  ProviderModelCatalog,
+  ProviderOption,
+  QueuedMessage,
+} from '../app/useWorkx';
 import {
   commandDescription,
   commandIcon,
@@ -47,16 +53,23 @@ type ComposerMenuState =
   | { mode: 'slash'; start: number; query: string };
 
 interface ComposerProps {
+  /// 当前 provider 的模型列表。
   models: Model[];
+  /// 按 provider 分组的模型目录缓存，模型选择器按它渲染分组。
+  modelsByProvider: ProviderModelCatalog;
+  /// 正在拉取模型目录的 provider。
+  catalogBusy: Record<string, boolean>;
   selectedModelId: string | null;
-  onModelChange: (id: string) => void;
+  /// 选择具体模型；模型属于其它 provider 时由调用方同时切换 provider。
+  onSelectModel: (providerId: string, modelId: string) => void;
+  /// 重新拉取指定 provider 的模型目录。
+  onRefreshProviderModels: (providerId: string) => void;
   /// Reasoning effort for the selected model; null means the model default.
   selectedEffort: string | null;
   onEffortChange: (effort: string) => void;
   providers: ProviderOption[];
   providerId: string | null;
   providerBusy: boolean;
-  onProviderChange: (id: string) => void;
   onManageProviders: () => void;
   permission: PermissionMode;
   onPermissionChange: (mode: PermissionMode) => void;
@@ -177,14 +190,16 @@ function matches(terms: Array<string | null | undefined>, query: string): boolea
 
 export function Composer({
   models,
+  modelsByProvider,
+  catalogBusy,
   selectedModelId,
-  onModelChange,
+  onSelectModel,
+  onRefreshProviderModels,
   selectedEffort,
   onEffortChange,
   providers,
   providerId,
   providerBusy,
-  onProviderChange,
   onManageProviders,
   permission,
   onPermissionChange,
@@ -213,8 +228,8 @@ export function Composer({
   const { t, language } = useI18n();
   const [value, setValue] = useState('');
   const [modelOpen, setModelOpen] = useState(false);
+  const [modelQuery, setModelQuery] = useState('');
   const [effortOpen, setEffortOpen] = useState(false);
-  const [providerOpen, setProviderOpen] = useState(false);
   const [permissionOpen, setPermissionOpen] = useState(false);
   const [menu, setMenu] = useState<ComposerMenuState | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
@@ -240,8 +255,23 @@ export function Composer({
   }, [value]);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? null;
-  const selectedProvider =
-    providers.find((provider) => provider.id === providerId) ?? null;
+  /// 模型选择器的分组内容：按 provider 展示顺序排列，搜索时只保留命中的模型。
+  const modelGroups = useMemo(() => {
+    const query = modelQuery.trim().toLowerCase();
+    return providers.flatMap((provider) => {
+      const listed = modelsByProvider[provider.id]?.models ?? [];
+      const matched = query
+        ? listed.filter((model) =>
+            matches([model.id, model.displayName, model.description], query),
+          )
+        : listed;
+      // 搜索时跳过没有命中的 provider，避免空分组占满列表。
+      if (query && matched.length === 0) {
+        return [];
+      }
+      return [{ id: provider.id, name: provider.name, models: matched }];
+    });
+  }, [modelQuery, modelsByProvider, providers]);
   const effortOptions = selectedModel?.supportedReasoningEfforts ?? [];
   const currentEffort = selectedEffort ?? selectedModel?.defaultReasoningEffort ?? null;
   const imageInputSupported =
@@ -487,7 +517,8 @@ export function Composer({
       return;
     }
     if (command.name === 'provider') {
-      setProviderOpen(true);
+      // 提供方与模型在同一个下拉里选择，两个命令都打开它。
+      setModelOpen(true);
       return;
     }
     if (command.name === 'permissions') {
@@ -781,64 +812,88 @@ export function Composer({
               <button
                 type="button"
                 disabled={providerBusy}
-                onClick={() => setProviderOpen((open) => !open)}
-                className="flex h-7 items-center gap-1 rounded-md px-2 text-[13px] text-fg-secondary hover:bg-hover disabled:opacity-60"
-              >
-                <span className="max-w-[140px] truncate">
-                  {selectedProvider?.name ?? t('composer.provider')}
-                </span>
-                <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
-              </button>
-              <Menu open={providerOpen} onClose={() => setProviderOpen(false)} align="right">
-                {providers.map((provider) => (
-                  <MenuItem
-                    key={provider.id}
-                    title={provider.name}
-                    description={provider.name === provider.id ? undefined : provider.id}
-                    selected={provider.id === providerId}
-                    onClick={() => {
-                      onProviderChange(provider.id);
-                      setProviderOpen(false);
-                    }}
-                  />
-                ))}
-                <div className="my-1 h-px bg-line" />
-                <MenuItem
-                  title={t('provider.manage')}
-                  description={t('provider.manageDescription')}
-                  icon={<Settings2 className="size-3.5" strokeWidth={1.75} />}
-                  onClick={() => {
-                    setProviderOpen(false);
-                    onManageProviders();
-                  }}
-                />
-              </Menu>
-            </div>
-
-            <div className="relative">
-              <button
-                type="button"
                 onClick={() => setModelOpen((open) => !open)}
-                className="flex h-7 items-center gap-1 rounded-md px-2 text-[13px] text-fg-secondary hover:bg-hover"
+                className="flex h-7 items-center gap-1 rounded-md px-2 text-[13px] text-fg-secondary hover:bg-hover disabled:opacity-60"
               >
                 <span className="max-w-[180px] truncate">
                   {selectedModel?.displayName ?? selectedModelId ?? t('composer.model')}
                 </span>
                 <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
               </button>
-              <Menu open={modelOpen} onClose={() => setModelOpen(false)} align="right">
-                {models.map((model) => (
-                  <MenuItem
-                    key={model.id}
-                    title={model.displayName}
-                    description={model.description}
-                    selected={model.id === selectedModelId}
-                    onClick={() => {
-                      onModelChange(model.id);
-                      setModelOpen(false);
-                    }}
+              <Menu
+                open={modelOpen}
+                onClose={() => {
+                  setModelOpen(false);
+                  setModelQuery('');
+                }}
+                align="right"
+              >
+                <div className="sticky -top-1 z-10 -mx-1 bg-elevated px-2 pt-1 pb-1.5">
+                  <input
+                    autoFocus
+                    value={modelQuery}
+                    onChange={(event) => setModelQuery(event.target.value)}
+                    placeholder={t('composer.searchModels')}
+                    className="h-7 w-full rounded-md border border-line bg-transparent px-2 text-[13px] outline-none placeholder:text-fg-tertiary focus:border-line-strong"
                   />
+                </div>
+                {modelGroups.map((group) => (
+                  <div key={group.id}>
+                    <div className="flex items-center justify-between gap-2 px-2.5 pt-1.5 pb-1">
+                      <span className="truncate text-[11px] tracking-wide text-fg-tertiary uppercase">
+                        {group.name}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={t('composer.refreshModels')}
+                        title={t('composer.refreshModels')}
+                        onClick={() => onRefreshProviderModels(group.id)}
+                        className="flex size-5 shrink-0 items-center justify-center rounded text-fg-tertiary hover:bg-hover hover:text-fg"
+                      >
+                        <RefreshCw
+                          className={cn('size-3', catalogBusy[group.id] && 'animate-spin')}
+                          strokeWidth={1.75}
+                        />
+                      </button>
+                    </div>
+                    {group.models.length === 0 ? (
+                      <div className="px-2.5 pb-2 text-[12px] text-fg-tertiary">
+                        {catalogBusy[group.id]
+                          ? t('composer.loadingModels')
+                          : t('composer.emptyModels')}
+                      </div>
+                    ) : (
+                      group.models.map((model) => (
+                        <MenuItem
+                          key={model.id}
+                          title={model.displayName}
+                          description={model.description}
+                          selected={group.id === providerId && model.id === selectedModelId}
+                          onClick={() => {
+                            onSelectModel(group.id, model.id);
+                            setModelOpen(false);
+                            setModelQuery('');
+                          }}
+                        />
+                      ))
+                    )}
+                  </div>
                 ))}
+                {modelGroups.length === 0 ? (
+                  <div className="px-2.5 py-2 text-[12px] text-fg-tertiary">
+                    {t('composer.emptyModels')}
+                  </div>
+                ) : null}
+                <div className="my-1 h-px bg-line" />
+                <MenuItem
+                  title={t('provider.manage')}
+                  description={t('provider.manageDescription')}
+                  icon={<Settings2 className="size-3.5" strokeWidth={1.75} />}
+                  onClick={() => {
+                    setModelOpen(false);
+                    onManageProviders();
+                  }}
+                />
               </Menu>
             </div>
 

@@ -163,6 +163,65 @@ export function orderProviderIds(ids: string[], order: string[]): string[] {
   return [...ranked, ...rest];
 }
 
+/// provider 模型目录的本地持久化键。目录按 provider 分组缓存，选择模型时直接命中缓存。
+export const MODEL_CATALOG_STORAGE_KEY = 'workx.modelCatalog';
+
+/// 单个 provider 的模型目录快照。`fetchedAt` 是该快照的拉取时刻，Unix 毫秒。
+export interface ProviderModelCatalogEntry {
+  fetchedAt: number;
+  models: Model[];
+}
+
+/// provider ID 到模型目录快照的映射。
+export type ProviderModelCatalog = Record<string, ProviderModelCatalogEntry>;
+
+/// 读取持久化的模型目录；条目缺失或结构非法时跳过该条目。
+export function readModelCatalog(): ProviderModelCatalog {
+  try {
+    const raw = window.localStorage.getItem(MODEL_CATALOG_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+    const catalog: ProviderModelCatalog = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const entry = value as { fetchedAt?: unknown; models?: unknown } | null;
+      if (!entry || !Array.isArray(entry.models)) {
+        continue;
+      }
+      catalog[id] = {
+        fetchedAt: typeof entry.fetchedAt === 'number' ? entry.fetchedAt : 0,
+        models: entry.models.filter(
+          (model): model is Model => Boolean(model) && typeof (model as Model).id === 'string',
+        ),
+      };
+    }
+    return catalog;
+  } catch {
+    return {};
+  }
+}
+
+/// 写入模型目录缓存。缓存只用于启动加速，写入失败不影响内存目录。
+function writeModelCatalog(catalog: ProviderModelCatalog): void {
+  try {
+    window.localStorage.setItem(MODEL_CATALOG_STORAGE_KEY, JSON.stringify(catalog));
+  } catch {
+    // 配额不足或存储被禁用时忽略。
+  }
+}
+
+/// 在模型目录中挑选可用模型：优先沿用当前选择，其次 provider 默认模型，最后取第一项。
+/// 目录为空时返回 null。
+export function pickModelIdForProvider(models: Model[], current: string | null): string | null {
+  return (
+    (current ? models.find((model) => model.id === current)?.id : undefined) ??
+    models.find((model) => model.isDefault)?.id ??
+    models[0]?.id ??
+    null
+  );
+}
+
 /// Provider-owned balance endpoint used by `modelProvider/balance/read`.
 export interface ProviderBalanceConfig {
   endpoint: string;
@@ -421,9 +480,21 @@ export interface WorkxController {
   status: 'connecting' | 'ready' | 'error' | 'stopped';
   statusMessage: string | null;
   serverInfo: InitializeResponse | null;
+  /// 当前 provider 的模型列表，取自 provider 目录缓存。
   models: Model[];
+  /// 按 provider 分组的模型目录缓存，key 是 provider ID。
+  modelsByProvider: ProviderModelCatalog;
+  /// 正在拉取模型目录的 provider；值为 true 表示该 provider 的刷新尚未结束。
+  catalogBusy: Record<string, boolean>;
   selectedModelId: string | null;
+  /// 在当前 provider 下选择模型。
   selectModel: (id: string) => void;
+  /// 选择具体模型；模型属于其它 provider 时同时切换 provider。
+  selectProviderModel: (providerId: string, modelId: string) => Promise<void>;
+  /// 重新拉取指定 provider 的模型目录，供手动刷新使用。
+  refreshProviderModels: (id: string) => Promise<void>;
+  /// 重新拉取全部 provider 的模型目录。
+  refreshModelCatalog: () => Promise<void>;
   providerId: string | null;
   providers: string[];
   providerOptions: ProviderOption[];
@@ -532,7 +603,6 @@ interface State {
   status: WorkxController['status'];
   statusMessage: string | null;
   serverInfo: InitializeResponse | null;
-  models: Model[];
   projects: Project[];
   threads: Thread[];
   subAgents: Thread[];
@@ -567,7 +637,6 @@ interface State {
 type Action =
   | { type: 'status'; status: State['status']; message?: string | null }
   | { type: 'serverInfo'; info: InitializeResponse | null }
-  | { type: 'models'; models: Model[] }
   | { type: 'projects'; projects: Project[] }
   | { type: 'threads'; threads: Thread[] }
   | { type: 'subAgents'; threads: Thread[]; rootThreadId: string | null }
@@ -611,7 +680,6 @@ const initialState: State = {
   status: 'connecting',
   statusMessage: null,
   serverInfo: null,
-  models: [],
   projects: [],
   threads: [],
   subAgents: [],
@@ -672,8 +740,6 @@ function reducer(state: State, action: Action): State {
       return { ...state, status: action.status, statusMessage: action.message ?? null };
     case 'serverInfo':
       return { ...state, serverInfo: action.info };
-    case 'models':
-      return { ...state, models: action.models };
     case 'projects':
       return { ...state, projects: action.projects };
     case 'threads':
@@ -927,6 +993,14 @@ interface ThreadResumeOverrides {
   model: string | null;
 }
 
+/// 模型选择目标。两者都省略表示按当前 provider 的缓存目录修正选择。
+interface ModelSelection {
+  /// 目标 provider；省略时沿用当前 provider。
+  providerId?: string;
+  /// 目标模型；省略时在该 provider 的目录中选择（沿用当前模型，否则取默认模型）。
+  modelId?: string;
+}
+
 export function useWorkx(): WorkxController {
   const { t } = useI18n();
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -936,6 +1010,9 @@ export function useWorkx(): WorkxController {
   const providerOrderRef = useRef<string[]>(readProviderOrder());
   const [providerConfigs, setProviderConfigs] = useState<Record<string, ProviderConfig>>({});
   const [providerBusy, setProviderBusy] = useState(false);
+  const [modelCatalog, setModelCatalog] = useState<ProviderModelCatalog>(readModelCatalog);
+  /// 正在拉取模型目录的 provider，用于下拉菜单里的刷新态。
+  const [catalogBusy, setCatalogBusy] = useState<Record<string, boolean>>({});
   const [effortId, setEffortId] = useState<string | null>(null);
   const [permissionId, setPermissionId] = useState('full-access');
   const [cwd, setCwd] = useState('');
@@ -956,6 +1033,15 @@ export function useWorkx(): WorkxController {
   const modelRef = useRef<string | null>(null);
   const providerRef = useRef<string | null>(null);
   const effortRef = useRef<string | null>(null);
+  /// provider 目录缓存的内存副本；写入与读取都走这里，避免回调闭包读到过期目录。
+  const modelCatalogRef = useRef<ProviderModelCatalog>(modelCatalog);
+  /// 配置里持久化的模型，仅在用户尚未选定模型时用于确定初始选择。
+  const configuredModelRef = useRef<string | null>(null);
+  /// 配置里持久化的 provider，是 `config.model_provider` 的镜像。
+  /// 与 `providerRef` 的区别：打开历史会话会采纳会话里的 provider，但不会写配置。
+  const configProviderRef = useRef<string | null>(null);
+  /// 当前 provider ID 列表，顺序与 `providers` 一致，供启动时逐个拉取模型目录。
+  const providersRef = useRef<string[]>([]);
   const permissionRef = useRef<PermissionMode>(
     PERMISSION_MODES.find((mode) => mode.id === 'full-access') ?? PERMISSION_MODES[0],
   );
@@ -1052,29 +1138,107 @@ export function useWorkx(): WorkxController {
     dispatch({ type: 'projects', projects: response.data });
   }, [request]);
 
-  const refreshModels = useCallback(async () => {
-    const [listed, config] = await Promise.all([
-      request<ModelListResponse>('model/list', {}),
-      request<ConfigReadResponse>('config/read', {}),
-    ]);
-    dispatch({ type: 'models', models: listed.data });
-    if (!modelRef.current) {
-      // The configured model is the last one the user picked, so a new chat keeps using it
-      // instead of falling back to the catalog default.
-      const configured = config.config.model;
-      const preferred =
-        (configured ? listed.data.find((model) => model.id === configured) : undefined) ??
-        listed.data.find((model) => model.isDefault) ??
-        listed.data[0] ??
-        null;
-      if (preferred) {
-        modelRef.current = preferred.id;
-        setSelectedModelId(preferred.id);
-        effortRef.current = preferred.defaultReasoningEffort ?? null;
-        setEffortId(preferred.defaultReasoningEffort ?? null);
+  /// 合并 provider 模型目录并落盘。同 ID 的新条目覆盖旧条目。
+  const mergeProviderModels = useCallback((entries: ProviderModelCatalog) => {
+    const next = { ...modelCatalogRef.current, ...entries };
+    modelCatalogRef.current = next;
+    writeModelCatalog(next);
+    setModelCatalog(next);
+  }, []);
+
+  /// 拉取指定 provider 的模型目录。`model/list` 读取的是配置里的当前 provider，
+  /// 因此需要临时切换 `model_provider`，拉取结束后恢复配置里的选择。
+  /// 单个 provider 失败时保留它上一次的缓存，不影响其余 provider。
+  const collectProviderModels = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) {
+        return;
       }
+      setCatalogBusy((current) => ({
+        ...current,
+        ...Object.fromEntries(ids.map((id) => [id, true])),
+      }));
+      const entries: ProviderModelCatalog = {};
+      let switched = false;
+      try {
+        for (const id of ids) {
+          try {
+            // 只按配置里的 provider 判断，避免历史会话采纳的 provider 让这里误判成已在目标上。
+            if (configProviderRef.current !== id) {
+              await request('config/batchWrite', {
+                edits: [{ keyPath: 'model_provider', value: id, mergeStrategy: 'replace' }],
+                reloadUserConfig: true,
+              });
+              switched = true;
+            }
+            const listed = await request<ModelListResponse>('model/list', {});
+            entries[id] = { fetchedAt: Date.now(), models: listed.data };
+          } catch {
+            // 该 provider 无法列出模型时保留上一次缓存。
+          }
+        }
+      } finally {
+        // 恢复目标是配置里的 provider：拉取期间用户切换过 provider 时已被写进配置，不会恢复成旧值。
+        if (switched) {
+          await request('config/batchWrite', {
+            edits: [
+              {
+                keyPath: 'model_provider',
+                value: configProviderRef.current ?? null,
+                mergeStrategy: 'replace',
+              },
+            ],
+            reloadUserConfig: true,
+          }).catch(() => undefined);
+        }
+        setCatalogBusy((current) => {
+          const next = { ...current };
+          for (const id of ids) {
+            delete next[id];
+          }
+          return next;
+        });
+      }
+      mergeProviderModels(entries);
+    },
+    [mergeProviderModels, request],
+  );
+
+  /// 刷新全部 provider 的模型目录。启动时调用一次。
+  const refreshModelCatalog = useCallback(
+    () => collectProviderModels(providersRef.current),
+    [collectProviderModels],
+  );
+
+  /// 刷新单个 provider 的模型目录，供 provider 分组上的刷新按钮调用。
+  const refreshProviderModels = useCallback(
+    (id: string) => collectProviderModels([id]),
+    [collectProviderModels],
+  );
+
+  /// 从缓存目录确定初始模型：优先配置里持久化的模型，其次 provider 默认模型。
+  /// 用户已选定模型时不覆盖。
+  const applyInitialModelSelection = useCallback(() => {
+    if (modelRef.current) {
+      return;
     }
-  }, [request]);
+    const models = providerRef.current
+      ? (modelCatalogRef.current[providerRef.current]?.models ?? [])
+      : [];
+    const configured = configuredModelRef.current;
+    const preferred =
+      (configured ? models.find((model) => model.id === configured) : undefined) ??
+      models.find((model) => model.isDefault) ??
+      models[0] ??
+      null;
+    if (!preferred) {
+      return;
+    }
+    modelRef.current = preferred.id;
+    setSelectedModelId(preferred.id);
+    effortRef.current = preferred.defaultReasoningEffort ?? null;
+    setEffortId(preferred.defaultReasoningEffort ?? null);
+  }, []);
 
   const persistModelSelection = useCallback(
     async (model: string, effort: string | null) => {
@@ -1140,8 +1304,12 @@ export function useWorkx(): WorkxController {
       ),
     );
     const ids = Array.from(new Set([...Object.keys(raw), ...Object.keys(LOCAL_MODEL_PROVIDER_DEFAULTS)]));
-    setProviders(orderProviderIds(ids, providerOrderRef.current));
+    const ordered = orderProviderIds(ids, providerOrderRef.current);
+    providersRef.current = ordered;
+    setProviders(ordered);
     providerRef.current = response.config.model_provider ?? null;
+    configProviderRef.current = response.config.model_provider ?? null;
+    configuredModelRef.current = response.config.model ?? null;
     setProviderId(response.config.model_provider ?? null);
     return raw;
   }, []);
@@ -1158,30 +1326,10 @@ export function useWorkx(): WorkxController {
     } catch {
       // 顺序仅用于展示，写入失败时保留当前会话内已生效的顺序。
     }
-    setProviders((current) => orderProviderIds(current, ordered));
+    const next = orderProviderIds(providersRef.current, ordered);
+    providersRef.current = next;
+    setProviders(next);
   }, []);
-
-  // Reloads the model catalog for the active provider and repairs the persisted model.
-  // A model the new provider does not list cannot be used, so it is replaced by the provider
-  // default; otherwise the previous selection is kept.
-  const loadModelsForActiveProvider = useCallback(async () => {
-    const listed = await request<ModelListResponse>('model/list', {});
-    const current = modelRef.current;
-    const preferred =
-      (current ? listed.data.find((model) => model.id === current) : undefined) ??
-      listed.data.find((model) => model.isDefault) ??
-      listed.data[0] ??
-      null;
-    await request('config/batchWrite', {
-      edits: [{ keyPath: 'model', value: preferred?.id ?? null, mergeStrategy: 'replace' }],
-      reloadUserConfig: true,
-    });
-    dispatch({ type: 'models', models: listed.data });
-    modelRef.current = preferred?.id ?? null;
-    setSelectedModelId(preferred?.id ?? null);
-    effortRef.current = preferred?.defaultReasoningEffort ?? null;
-    setEffortId(preferred?.defaultReasoningEffort ?? null);
-  }, [request]);
 
   const openThread = useCallback(
     async (id: string, overrides?: ThreadResumeOverrides) => {
@@ -1281,6 +1429,10 @@ export function useWorkx(): WorkxController {
       if (adoptSession && activeProvider) {
         providerRef.current = activeProvider;
         setProviderId(activeProvider);
+        // 会话记录的 provider 可能没有目录缓存，补齐后模型选择器才能列出它的模型。
+        if (!modelCatalogRef.current[activeProvider]) {
+          void collectProviderModels([activeProvider]);
+        }
       }
       dispatch({
         type: 'thread',
@@ -1294,7 +1446,7 @@ export function useWorkx(): WorkxController {
       }
       void loadGoal(thread.id);
     },
-    [loadGoal, refreshSubAgents, request, t],
+    [collectProviderModels, loadGoal, refreshSubAgents, request, t],
   );
 
   // A session keeps the provider snapshot it was created with, so provider changes only
@@ -1307,6 +1459,61 @@ export function useWorkx(): WorkxController {
       }
     },
     [openThread],
+  );
+
+  /// 一次写入完成的模型选择：provider 与模型同时落盘，避免配置里出现两者不匹配的中间状态。
+  /// provider 变化时会重建当前会话，让新会话按新的 provider 与模型运行。
+  const applyModelSelection = useCallback(
+    async ({ providerId: targetProvider, modelId: targetModel }: ModelSelection = {}) => {
+      const provider = targetProvider ?? providerRef.current;
+      const providerChanged = provider !== null && provider !== providerRef.current;
+      setProviderBusy(true);
+      try {
+        if (provider && !modelCatalogRef.current[provider]) {
+          // 目录缺失时先拉取，否则无法为该 provider 确定可用的模型。
+          await collectProviderModels([provider]);
+        }
+        const models = provider ? (modelCatalogRef.current[provider]?.models ?? []) : [];
+        const modelId = targetModel ?? pickModelIdForProvider(models, modelRef.current);
+        const model = models.find((candidate) => candidate.id === modelId) ?? null;
+        let effort = effortRef.current;
+        if (model) {
+          effort = model.defaultReasoningEffort ?? null;
+        } else if (providerChanged) {
+          // provider 变化后旧模型的推理强度不再适用。
+          effort = null;
+        }
+        const edits: { keyPath: string; value: unknown; mergeStrategy: 'replace' | 'upsert' }[] = [
+          { keyPath: 'model', value: modelId, mergeStrategy: 'replace' },
+          { keyPath: 'model_reasoning_effort', value: effort, mergeStrategy: 'replace' },
+        ];
+        if (providerChanged && provider) {
+          edits.unshift({ keyPath: 'model_provider', value: provider, mergeStrategy: 'replace' });
+          edits.push({ keyPath: 'service_tier', value: null, mergeStrategy: 'replace' });
+        }
+        await request('config/batchWrite', { edits, reloadUserConfig: true });
+        if (providerChanged && provider) {
+          providerRef.current = provider;
+          configProviderRef.current = provider;
+          setProviderId(provider);
+        }
+        modelRef.current = modelId;
+        setSelectedModelId(modelId);
+        effortRef.current = effort;
+        setEffortId(effort);
+        if (providerChanged && provider) {
+          await applyProviderToActiveThread(provider);
+        }
+      } catch (error) {
+        dispatch({
+          type: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        setProviderBusy(false);
+      }
+    },
+    [applyProviderToActiveThread, collectProviderModels, request],
   );
 
   const saveProvider = useCallback(
@@ -1341,23 +1548,18 @@ export function useWorkx(): WorkxController {
           }),
         );
       }
+      // 编辑 provider 会改变它的可用模型，保存后刷新该 provider 的目录缓存。
+      await refreshProviderModels(id);
       if (id === providerId) {
-        try {
-          await loadModelsForActiveProvider();
-          await applyProviderToActiveThread(id);
-        } catch (error) {
-          dispatch({
-            type: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
+        // 当前 provider 的会话仍按旧配置运行，需要重建才会用上新的 provider 配置。
+        await applyProviderToActiveThread(id);
       }
     },
     [
       applyConfigRead,
       applyProviderToActiveThread,
-      loadModelsForActiveProvider,
       providerId,
+      refreshProviderModels,
       request,
       t,
     ],
@@ -1386,23 +1588,11 @@ export function useWorkx(): WorkxController {
       await request('config/batchWrite', { edits, reloadUserConfig: true });
       await refreshProviders();
       if (wasActive && fallback) {
-        try {
-          await loadModelsForActiveProvider();
-        } catch (error) {
-          dispatch({
-            type: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
+        // 删除后配置已指向 fallback（refreshProviders 读回），这里只需把模型选择对齐到它的目录。
+        await applyModelSelection({ providerId: fallback });
       }
     },
-    [
-      loadModelsForActiveProvider,
-      providerId,
-      providers,
-      refreshProviders,
-      request,
-    ],
+    [applyModelSelection, providerId, providers, refreshProviders, request],
   );
 
   const readProviderBalance = useCallback(
@@ -1524,41 +1714,24 @@ export function useWorkx(): WorkxController {
     [request, refreshProjects, refreshThreads],
   );
 
+
+  /// 切换 provider；模型取该 provider 目录里可用的一个。
   const selectProvider = useCallback(
     async (id: string) => {
       if (providerBusy || id === providerId) {
         return;
       }
-      setProviderBusy(true);
-      try {
-        await request('config/batchWrite', {
-          edits: [
-            { keyPath: 'model_provider', value: id, mergeStrategy: 'replace' },
-            { keyPath: 'model_reasoning_effort', value: null, mergeStrategy: 'replace' },
-            { keyPath: 'service_tier', value: null, mergeStrategy: 'replace' },
-          ],
-          reloadUserConfig: true,
-        });
-        await refreshProviders();
-        await loadModelsForActiveProvider();
-        await applyProviderToActiveThread(id);
-      } catch (error) {
-        dispatch({
-          type: 'error',
-          message: error instanceof Error ? error.message : String(error),
-        });
-      } finally {
-        setProviderBusy(false);
-      }
+      await applyModelSelection({ providerId: id });
     },
-    [
-      applyProviderToActiveThread,
-      loadModelsForActiveProvider,
-      providerBusy,
-      providerId,
-      refreshProviders,
-      request,
-    ],
+    [applyModelSelection, providerBusy, providerId],
+  );
+
+  /// 选择具体模型；模型属于其它 provider 时同时切换 provider。供 composer 的模型下拉使用。
+  const selectProviderModel = useCallback(
+    async (id: string, model: string) => {
+      await applyModelSelection({ providerId: id, modelId: model });
+    },
+    [applyModelSelection],
   );
 
   // 重试只读会话：provider 已删除时必须带上当前的 provider，否则服务端仍按旧 provider 重建。
@@ -2324,13 +2497,16 @@ export function useWorkx(): WorkxController {
         dispatch({ type: 'serverInfo', info: result.info ?? null });
         dispatch({ type: 'status', status: 'ready' });
         await Promise.all([
-          refreshModels(),
           refreshThreads(),
           refreshProjects(),
           refreshProviders(),
           refreshMcpServers(),
           refreshSlashCommands(),
         ]);
+        // 先用上次缓存的目录确定初始模型，避免等待逐个 provider 的网络拉取。
+        applyInitialModelSelection();
+        // 启动时刷新每个 provider 的模型目录；刷新完成后补一次初始选择，缓存为空时也能选中模型。
+        void refreshModelCatalog().then(applyInitialModelSelection);
       } catch (error) {
         dispatch({
           type: 'status',
@@ -2340,8 +2516,9 @@ export function useWorkx(): WorkxController {
       }
     })();
   }, [
+    applyInitialModelSelection,
     refreshMcpServers,
-    refreshModels,
+    refreshModelCatalog,
     refreshProjects,
     refreshProviders,
     refreshSlashCommands,
@@ -2433,21 +2610,26 @@ export function useWorkx(): WorkxController {
     [state.threads],
   );
 
+  /// 当前 provider 的模型列表。选择器按 provider 分组展示时也用它定位已选模型。
+  const models = useMemo(
+    () => (providerId ? (modelCatalog[providerId]?.models ?? []) : []),
+    [modelCatalog, providerId],
+  );
+
   return {
     status: state.status,
     statusMessage: state.statusMessage,
     serverInfo: state.serverInfo,
-    models: state.models,
+    models,
+    modelsByProvider: modelCatalog,
+    catalogBusy,
     selectedModelId,
     selectModel: (id) => {
-      modelRef.current = id;
-      setSelectedModelId(id);
-      const model = state.models.find((candidate) => candidate.id === id);
-      const effort = model ? (model.defaultReasoningEffort ?? null) : effortRef.current;
-      effortRef.current = effort;
-      setEffortId(effort);
-      void persistModelSelection(id, effort);
+      void applyModelSelection({ modelId: id });
     },
+    selectProviderModel,
+    refreshProviderModels,
+    refreshModelCatalog,
     selectedEffort: effortId,
     setEffort: (effort) => {
       effortRef.current = effort;

@@ -540,14 +540,20 @@ export function App() {
 
             <Composer
               models={workx.models}
+              modelsByProvider={workx.modelsByProvider}
+              catalogBusy={workx.catalogBusy}
               selectedModelId={workx.selectedModelId}
-              onModelChange={workx.selectModel}
+              onSelectModel={(providerId, modelId) =>
+                void workx.selectProviderModel(providerId, modelId)
+              }
+              onRefreshProviderModels={(providerId) =>
+                void workx.refreshProviderModels(providerId)
+              }
               selectedEffort={workx.selectedEffort}
               onEffortChange={workx.setEffort}
               providers={workx.providerOptions}
               providerId={workx.providerId}
               providerBusy={workx.providerBusy}
-              onProviderChange={(id) => void workx.selectProvider(id)}
               onManageProviders={() => setSettingsSection('providers')}
               permission={workx.permission}
               onPermissionChange={workx.setPermission}

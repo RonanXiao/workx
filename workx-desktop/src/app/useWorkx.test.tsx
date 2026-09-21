@@ -10,7 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Thread } from '@protocol/v2/Thread';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, translate } from '../lib/i18n';
 import type { AppServerNotification, WorkxBridge } from '../preload';
-import { PROVIDER_ORDER_STORAGE_KEY, useWorkx, type WorkxController } from './useWorkx';
+import {
+  MODEL_CATALOG_STORAGE_KEY,
+  PROVIDER_ORDER_STORAGE_KEY,
+  readModelCatalog,
+  useWorkx,
+  type WorkxController,
+} from './useWorkx';
 
 const THREAD_ID = '01a0a7e5-7354-7661-9386-8dcacd8b666c';
 const CWD = '/tmp/workx-desktop-resume-test';
@@ -28,6 +34,8 @@ interface ResumeScenario {
   subAgentThreads?: Thread[];
   /** 记录桥接收到的请求，用于断言桌面端发出的 wire 参数。 */
   recordedRequests?: Array<{ method: string; params?: unknown }>;
+  /** 首次 `model/list` 会失败的 provider，用于模拟单个 provider 拉取失败。 */
+  modelListFailsOnce?: string[];
 }
 
 function threadSummary(provider: string): Thread {
@@ -66,6 +74,7 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
   // Mirrors the config file the app-server would hand back through `config/read`.
   const config = { provider: 'alpha', model: 'alpha-catalog-model' };
   const providers: Record<string, unknown> = { alpha: { name: 'Alpha' }, beta: { name: 'Beta' } };
+  const failingModelList = new Set(scenario.modelListFailsOnce ?? []);
   let writerBusy = scenario.writerBusyOnce === true;
   const request = async (method: string, params?: unknown): Promise<unknown> => {
     scenario.recordedRequests?.push({ method, params });
@@ -95,6 +104,9 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
         return {};
       }
       case 'model/list':
+        if (failingModelList.delete(config.provider)) {
+          throw new Error(`model/list failed for ${config.provider}`);
+        }
         return {
           data: [
             {
@@ -181,6 +193,7 @@ beforeEach(() => {
   window.localStorage.removeItem('workx.followUpBehavior');
   window.localStorage.removeItem('workx.queueing');
   window.localStorage.removeItem(PROVIDER_ORDER_STORAGE_KEY);
+  window.localStorage.removeItem(MODEL_CATALOG_STORAGE_KEY);
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   latest = null;
@@ -426,6 +439,131 @@ describe('local providers', () => {
     expect(controller().providers).toEqual(['ollama', 'beta', 'alpha', 'lmstudio']);
     expect(window.localStorage.getItem(PROVIDER_ORDER_STORAGE_KEY))
       .toBe(JSON.stringify(['ollama', 'beta', 'alpha']));
+  });
+});
+
+/// 取出 `config/batchWrite` 里写 `model_provider` 的值，用于断言 provider 切换顺序。
+function providerWrites(params: unknown): string[] {
+  const { edits } = params as { edits: { keyPath: string; value: unknown }[] };
+  return edits
+    .filter((edit) => edit.keyPath === 'model_provider')
+    .map((edit) => String(edit.value));
+}
+
+describe('model catalog', () => {
+  it('fetches each provider model list on boot and caches it', async () => {
+    const recordedRequests: Array<{ method: string; params?: unknown }> = [];
+    await renderWorkx(
+      createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
+    );
+    await waitFor(
+      () => Object.keys(controller().modelsByProvider).length === 4,
+      'provider model catalog',
+    );
+    // 启动时逐个 provider 拉取：alpha 已是配置里的 provider，不需要切换；结束后恢复配置里的选择。
+    expect(
+      recordedRequests
+        .filter((entry) => entry.method === 'config/batchWrite')
+        .flatMap((entry) => providerWrites(entry.params)),
+    ).toEqual(['beta', 'lmstudio', 'ollama', 'alpha']);
+    expect(recordedRequests.filter((entry) => entry.method === 'model/list')).toHaveLength(4);
+    // 目录落盘，下次启动直接命中缓存。
+    expect(controller().modelsByProvider.beta.models.map((model) => model.id))
+      .toEqual(['beta-catalog-model']);
+    expect(Object.keys(readModelCatalog()).sort())
+      .toEqual(['alpha', 'beta', 'lmstudio', 'ollama']);
+  });
+
+  it('selects a model of another provider and switches the provider in one write', async () => {
+    const recordedRequests: Array<{ method: string; params?: unknown }> = [];
+    await renderWorkx(
+      createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
+    );
+    await waitFor(
+      () => Object.keys(controller().modelsByProvider).length === 4,
+      'provider model catalog',
+    );
+    recordedRequests.length = 0;
+
+    await act(async () => {
+      await controller().selectProviderModel('beta', 'beta-catalog-model');
+    });
+
+    expect(controller().error).toBeNull();
+    expect(controller().providerId).toBe('beta');
+    expect(controller().selectedModelId).toBe('beta-catalog-model');
+    // 命中缓存，不需要重新拉取目录；provider 与模型写在同一次 batchWrite 里。
+    expect(recordedRequests.map((entry) => entry.method)).toEqual(['config/batchWrite']);
+    expect((recordedRequests[0].params as { edits: { keyPath: string }[] }).edits.map(
+      (edit) => edit.keyPath,
+    )).toEqual(['model_provider', 'model', 'model_reasoning_effort', 'service_tier']);
+  });
+
+  it('selects a cached model of the current provider without refetching', async () => {
+    const recordedRequests: Array<{ method: string; params?: unknown }> = [];
+    await renderWorkx(
+      createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
+    );
+    await waitFor(
+      () => Object.keys(controller().modelsByProvider).length === 4,
+      'provider model catalog',
+    );
+    recordedRequests.length = 0;
+
+    await act(async () => {
+      controller().selectModel('alpha-catalog-model');
+    });
+    await flush();
+
+    expect(recordedRequests.map((entry) => entry.method)).toEqual(['config/batchWrite']);
+    expect(controller().selectedModelId).toBe('alpha-catalog-model');
+  });
+
+  it('refreshes one provider on demand and restores the configured provider', async () => {
+    const recordedRequests: Array<{ method: string; params?: unknown }> = [];
+    await renderWorkx(
+      createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
+    );
+    await waitFor(
+      () => Object.keys(controller().modelsByProvider).length === 4,
+      'provider model catalog',
+    );
+    recordedRequests.length = 0;
+
+    await act(async () => {
+      await controller().refreshProviderModels('beta');
+    });
+
+    expect(recordedRequests.map((entry) => entry.method))
+      .toEqual(['config/batchWrite', 'model/list', 'config/batchWrite']);
+    expect(providerWrites(recordedRequests[0].params)).toEqual(['beta']);
+    expect(providerWrites(recordedRequests[2].params)).toEqual(['alpha']);
+    expect(controller().catalogBusy).toEqual({});
+    expect(controller().providerId).toBe('alpha');
+  });
+
+  it('fetches the catalog of a provider that failed to list at boot', async () => {
+    const recordedRequests: Array<{ method: string; params?: unknown }> = [];
+    await renderWorkx(createBridge({
+      threadProvider: 'beta',
+      sessionProvider: 'beta',
+      modelListFailsOnce: ['beta'],
+      recordedRequests,
+    }));
+    await waitFor(
+      () => Object.keys(controller().modelsByProvider).length === 3,
+      'remaining provider model catalog',
+    );
+    expect(controller().modelsByProvider.beta).toBeUndefined();
+
+    await act(async () => {
+      await controller().openThread(THREAD_ID);
+    });
+    await waitFor(() => controller().modelsByProvider.beta !== undefined, 'beta model catalog');
+
+    // 会话切到 beta 后补拉它的目录，选择器不再显示上一个 provider 的模型。
+    expect(controller().providerId).toBe('beta');
+    expect(controller().models.map((model) => model.id)).toEqual(['beta-catalog-model']);
   });
 });
 
