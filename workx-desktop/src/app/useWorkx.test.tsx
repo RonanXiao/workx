@@ -32,6 +32,8 @@ interface ResumeScenario {
   writerBusyOnce?: boolean;
   /** 该会话树下的子代理线程；`thread/list` 带 ancestorThreadId 时返回。 */
   subAgentThreads?: Thread[];
+  /** resume 返回的会话里仍在进行的 turn id，用于覆盖运行中切换 provider 后的中断。 */
+  runningTurnId?: string;
   /** 记录桥接收到的请求，用于断言桌面端发出的 wire 参数。 */
   recordedRequests?: Array<{ method: string; params?: unknown }>;
   /** 首次 `model/list` 会失败的 provider，用于模拟单个 provider 拉取失败。 */
@@ -67,6 +69,13 @@ function storedTurnThread(provider: string): Thread {
         ],
       },
     ],
+  } as unknown as Thread;
+}
+
+function runningTurnThread(provider: string, turnId: string): Thread {
+  return {
+    ...threadSummary(provider),
+    turns: [{ id: turnId, status: 'inProgress', items: [] }],
   } as unknown as Thread;
 }
 
@@ -135,8 +144,12 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
           throw new Error(`Model provider \`${scenario.missingProvider}\` not found`);
         }
         const sessionProvider = requested ? scenario.sessionProvider : scenario.threadProvider;
+        // 运行中的会话 resume 后仍带着进行中的 turn，客户端据此恢复中断目标。
+        const thread = scenario.runningTurnId
+          ? runningTurnThread(scenario.threadProvider, scenario.runningTurnId)
+          : threadSummary(scenario.threadProvider);
         return {
-          thread: threadSummary(scenario.threadProvider),
+          thread,
           model: `${sessionProvider}-session-model`,
           modelProvider: sessionProvider,
           reasoningEffort: 'high',
@@ -149,6 +162,8 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
       case 'turn/start':
         return { turn: { id: 'active-turn' } };
       case 'turn/steer':
+        return {};
+      case 'turn/interrupt':
         return {};
       case 'thread/fork':
         return { thread: { ...threadSummary('alpha'), id: 'side-thread' } };
@@ -669,5 +684,35 @@ describe('provider switching on an open thread', () => {
     // while the composer keeps the provider the user picked for the next chat.
     expect(controller().warnings).toContain(translate('en', 'provider.switchDeferred'));
     expect(controller().providerId).toBe('beta');
+  });
+
+  it('interrupts the running turn a deferred provider switch kept alive', async () => {
+    const scenario: ResumeScenario = {
+      threadProvider: 'alpha',
+      sessionProvider: 'alpha',
+      runningTurnId: 'running-turn',
+      recordedRequests: [],
+    };
+    await renderWorkx(createBridge(scenario));
+    await act(async () => {
+      await controller().openThread(THREAD_ID);
+    });
+    expect(controller().running).toBe(true);
+
+    await act(async () => {
+      await controller().selectProvider('beta');
+    });
+    expect(controller().warnings).toContain(translate('en', 'provider.switchDeferred'));
+    // resume 拿到的仍是运行中的会话，停止按钮必须带着它的 turn id 发中断请求。
+    expect(controller().running).toBe(true);
+
+    await act(async () => {
+      await controller().interrupt();
+    });
+    expect(
+      scenario.recordedRequests?.filter((entry) => entry.method === 'turn/interrupt'),
+    ).toEqual([
+      { method: 'turn/interrupt', params: { threadId: THREAD_ID, turnId: 'running-turn' } },
+    ]);
   });
 });

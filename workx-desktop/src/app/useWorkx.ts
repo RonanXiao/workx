@@ -1428,7 +1428,9 @@ export function useWorkx(): WorkxController {
       }
       threadIdRef.current = thread.id;
       activeProjectIdRef.current = thread.projectId;
-      turnIdRef.current = null;
+      // 运行中的会话在 resume 时会带回进行中的 turn；恢复它的 id，停止和插话才有目标。
+      turnIdRef.current =
+        thread.turns.findLast((turn) => turn.status === 'inProgress')?.id ?? null;
       // 顶层会话重设面板锚点；打开子代理会话时保留原锚点，面板继续列出它的兄弟代理。
       if (thread.parentThreadId === null) {
         subAgentRootRef.current = thread.id;
