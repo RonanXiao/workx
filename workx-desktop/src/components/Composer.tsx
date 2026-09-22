@@ -3,6 +3,7 @@ import {
   ArrowUp,
   ChevronDown,
   FileText,
+  Folder,
   MessageSquare,
   ListEnd,
   Mic,
@@ -25,6 +26,7 @@ import type { SkillMetadata } from '@protocol/v2/SkillMetadata';
 import type { Thread } from '@protocol/v2/Thread';
 import type {
   FollowUpBehavior,
+  ProjectView,
   ProviderModelCatalog,
   ProviderOption,
   QueuedMessage,
@@ -91,6 +93,12 @@ interface ComposerProps {
   onSendQueued: (id: string, destination: 'current' | 'side') => void;
   disabled: boolean;
   disabledPlaceholder?: string;
+  /// 是否处于新建对话状态；为 true 时在输入框上方显示项目选择器。
+  newChat: boolean;
+  projects: ProjectView[];
+  /// 新建对话预选的项目；null 表示不归属任何项目。
+  selectedProjectId: string | null;
+  onSelectProject: (projectId: string | null) => void;
   /// 发送草稿。`behavior` 省略时使用用户的默认跟进行为，逐条覆盖时由调用方显式传入。
   onSubmit: (
     text: string,
@@ -221,6 +229,10 @@ export function Composer({
   onSendQueued,
   disabled,
   disabledPlaceholder,
+  newChat,
+  projects,
+  selectedProjectId,
+  onSelectProject,
   onSubmit,
   onCommand,
   onInterrupt,
@@ -231,6 +243,7 @@ export function Composer({
   const [modelQuery, setModelQuery] = useState('');
   const [effortOpen, setEffortOpen] = useState(false);
   const [permissionOpen, setPermissionOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
   const [menu, setMenu] = useState<ComposerMenuState | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -620,6 +633,9 @@ export function Composer({
     onSubmit(trimmed, bindings, imagePaths, behavior);
   };
 
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? null;
+
   return (
     <div className="shrink-0 px-6 pb-4">
       <QueuedMessages messages={queuedMessages} disabled={disabled || queueBusy}
@@ -643,6 +659,47 @@ export function Composer({
             onSelect={applyItem}
             onDismiss={closeMenu}
           />
+        ) : null}
+
+        {newChat ? (
+          <div className="flex items-center px-3 pt-3">
+            <div className="relative">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setProjectOpen((open) => !open)}
+                className="flex h-7 items-center gap-1.5 rounded-md border border-line px-2 text-[13px] text-fg-secondary hover:bg-hover disabled:opacity-60"
+              >
+                <Folder className="size-3.5 shrink-0" strokeWidth={1.75} />
+                <span className="max-w-[220px] truncate">
+                  {selectedProject?.name ?? t('composer.selectProject')}
+                </span>
+                <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
+              </button>
+              <Menu open={projectOpen} onClose={() => setProjectOpen(false)}>
+                <MenuItem
+                  title={t('composer.noProject')}
+                  selected={selectedProjectId === null}
+                  onClick={() => {
+                    onSelectProject(null);
+                    setProjectOpen(false);
+                  }}
+                />
+                {projects.map((project) => (
+                  <MenuItem
+                    key={project.id}
+                    title={project.name}
+                    description={project.primaryRoot ?? undefined}
+                    selected={project.id === selectedProjectId}
+                    onClick={() => {
+                      onSelectProject(project.id);
+                      setProjectOpen(false);
+                    }}
+                  />
+                ))}
+              </Menu>
+            </div>
+          </div>
         ) : null}
 
         {images.length > 0 || imageNotice ? (

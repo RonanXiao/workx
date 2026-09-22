@@ -585,8 +585,10 @@ export interface WorkxController {
   clearGoal: () => Promise<void>;
   setGoalStatus: (status: ThreadGoalStatus) => Promise<void>;
   setActiveCwd: (cwd: string) => void;
-  newThread: () => Promise<void>;
-  newThreadInProject: (projectId: string) => Promise<void>;
+  newThread: () => void;
+  newThreadInProject: (projectId: string) => void;
+  /// 草稿态下选择新会话归属的项目；null 表示不归属任何项目。
+  setDraftProject: (projectId: string | null) => void;
   openThread: (id: string) => Promise<void>;
   forkThread: (lastTurnId: string) => Promise<void>;
   retryActiveThread: () => Promise<void>;
@@ -1634,9 +1636,9 @@ export function useWorkx(): WorkxController {
   );
 
   const startThread = useCallback(
-    async (projectId?: string, cwd?: string, selection?: number): Promise<string> => {
+    async (projectId?: string, selection?: number): Promise<string> => {
       const response = await request<ThreadStartResponse>('thread/start', {
-        cwd: cwd ?? (cwdRef.current || undefined),
+        cwd: cwdRef.current || undefined,
         projectId: projectId ?? undefined,
         runtimeWorkspaceRoots: projectWorkspaceRoots(projectsRef.current, projectId ?? null),
         model: modelRef.current ?? undefined,
@@ -1667,39 +1669,51 @@ export function useWorkx(): WorkxController {
     [refreshSubAgents, request],
   );
 
-  const beginThread = useCallback(
-    async (projectId: string | null) => {
-      const selection = ++selectionRef.current;
-      threadIdRef.current = null;
-      turnIdRef.current = null;
-      subAgentRootRef.current = null;
-      void refreshSubAgents();
-      const project = projectsRef.current.find((candidate) => candidate.id === projectId);
-      const primaryRoot = project?.roots[0]?.path;
-      if (primaryRoot) {
-        cwdRef.current = primaryRoot;
-        setCwd(primaryRoot);
+  // 取得当前会话 id。草稿态下首个发送请求会在这里补建会话，并发的发送共用同一次建会话请求。
+  const ensureThread = useCallback(
+    async (selection: number): Promise<string> => {
+      const existing = threadIdRef.current;
+      if (existing) {
+        return existing;
       }
-      activeProjectIdRef.current = projectId;
-      dispatch({ type: 'draft', projectId });
-      const starting = startThread(projectId ?? undefined, primaryRoot, selection);
+      const starting =
+        pendingStartRef.current ??
+        startThread(activeProjectIdRef.current ?? undefined, selection);
       pendingStartRef.current = starting;
       try {
-        await starting;
-      } catch (error) {
-        if (selection === selectionRef.current) {
-          dispatch({
-            type: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
+        return await starting;
       } finally {
         if (pendingStartRef.current === starting) {
           pendingStartRef.current = null;
         }
       }
     },
-    [refreshSubAgents, startThread],
+    [startThread],
+  );
+
+  // 草稿态下选择新会话归属的项目。项目第一个根目录同时作为新会话的工作目录。
+  const setDraftProject = useCallback((projectId: string | null) => {
+    const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+    const primaryRoot = project?.roots[0]?.path;
+    if (primaryRoot) {
+      cwdRef.current = primaryRoot;
+      setCwd(primaryRoot);
+    }
+    activeProjectIdRef.current = projectId;
+    dispatch({ type: 'draft', projectId });
+  }, []);
+
+  // 进入草稿态：只重置视图并预选项目，不创建会话。会话在发送第一条消息时创建。
+  const beginThread = useCallback(
+    (projectId: string | null) => {
+      selectionRef.current += 1;
+      threadIdRef.current = null;
+      turnIdRef.current = null;
+      subAgentRootRef.current = null;
+      void refreshSubAgents();
+      setDraftProject(projectId);
+    },
+    [refreshSubAgents, setDraftProject],
   );
 
   const newThread = useCallback(() => beginThread(null), [beginThread]);
@@ -1801,10 +1815,7 @@ export function useWorkx(): WorkxController {
   const setGoal = useCallback(
     async (objective: string) => {
       try {
-        const threadId =
-          threadIdRef.current ??
-          (await (pendingStartRef.current ??
-            startThread(activeProjectIdRef.current ?? undefined)));
+        const threadId = await ensureThread(selectionRef.current);
         const response = await request<ThreadGoalSetResponse>('thread/goal/set', {
           threadId,
           objective,
@@ -1820,7 +1831,7 @@ export function useWorkx(): WorkxController {
         return null;
       }
     },
-    [request, startThread],
+    [ensureThread, request],
   );
 
   const clearGoal = useCallback(async () => {
@@ -1908,10 +1919,16 @@ export function useWorkx(): WorkxController {
         return;
       }
       const selection = selectionRef.current;
-      const threadId =
-        threadIdRef.current ??
-        (await (pendingStartRef.current ??
-          startThread(activeProjectIdRef.current ?? undefined, undefined, selection)));
+      let threadId: string;
+      try {
+        threadId = await ensureThread(selection);
+      } catch (error) {
+        dispatch({
+          type: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
       if (selection !== selectionRef.current) {
         return;
       }
@@ -1974,7 +1991,7 @@ export function useWorkx(): WorkxController {
 
       await startTurn(input, options?.asGoal ? text : null);
     },
-    [followUpBehavior, request, setGoal, startThread, startTurn, state.readOnly],
+    [ensureThread, followUpBehavior, request, setGoal, startTurn, state.readOnly],
   );
 
   const sendMessage = useCallback(
@@ -2153,15 +2170,12 @@ export function useWorkx(): WorkxController {
   }, [request]);
 
   const reviewChanges = useCallback(async () => {
-    const threadId =
-      threadIdRef.current ??
-      (await (pendingStartRef.current ??
-        startThread(activeProjectIdRef.current ?? undefined, undefined, selectionRef.current)));
+    const threadId = await ensureThread(selectionRef.current);
     await request('review/start', {
       threadId,
       target: { type: 'uncommittedChanges' },
     });
-  }, [request, startThread]);
+  }, [ensureThread, request]);
 
   const initAgentsFile = useCallback(async () => {
     await sendMessage(INIT_AGENTS_PROMPT);
@@ -2730,6 +2744,7 @@ export function useWorkx(): WorkxController {
     },
     newThread,
     newThreadInProject,
+    setDraftProject,
     openThread,
     forkThread,
     retryActiveThread,

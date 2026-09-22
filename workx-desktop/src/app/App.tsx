@@ -579,6 +579,10 @@ export function App() {
               }}
               disabled={disabled || workx.readOnly !== null}
               disabledPlaceholder={readOnlyPlaceholder}
+              newChat={activeThread === null}
+              projects={workx.projects}
+              selectedProjectId={workx.draft?.projectId ?? null}
+              onSelectProject={workx.setDraftProject}
               onSubmit={(text, bindings, images, behavior) => {
                 void workx.sendMessage(text, bindings, images, { behavior });
                 window.requestAnimationFrame(scrollToBottom);

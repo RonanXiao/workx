@@ -19,7 +19,15 @@ import {
 } from './useWorkx';
 
 const THREAD_ID = '01a0a7e5-7354-7661-9386-8dcacd8b666c';
+const NEW_THREAD_ID = '01a0a7e5-7354-7661-9386-8dcacd8b7777';
 const CWD = '/tmp/workx-desktop-resume-test';
+const PROJECT_ROOT = '/tmp/workx-desktop-project';
+
+interface ProjectScenario {
+  id: string;
+  name: string;
+  roots: Array<{ path: string }>;
+}
 
 interface ResumeScenario {
   /** Provider stored on the thread summary. A resume that applied overrides leaves it stale. */
@@ -38,6 +46,8 @@ interface ResumeScenario {
   recordedRequests?: Array<{ method: string; params?: unknown }>;
   /** 首次 `model/list` 会失败的 provider，用于模拟单个 provider 拉取失败。 */
   modelListFailsOnce?: string[];
+  /** `project/list` 返回的项目，用于覆盖新对话的项目预选。 */
+  projects?: ProjectScenario[];
 }
 
 function threadSummary(provider: string): Thread {
@@ -157,6 +167,17 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
       }
       case 'thread/read':
         return { thread: storedTurnThread(scenario.threadProvider) };
+      case 'thread/start': {
+        const startParams = params as { projectId?: string; cwd?: string };
+        return {
+          thread: {
+            ...threadSummary(scenario.threadProvider),
+            id: NEW_THREAD_ID,
+            projectId: startParams.projectId ?? null,
+            cwd: startParams.cwd ?? CWD,
+          },
+        };
+      }
       case 'thread/unsubscribe':
         return {};
       case 'turn/start':
@@ -170,7 +191,7 @@ function createBridge(scenario: ResumeScenario): WorkxBridge {
       case 'thread/goal/get':
         return { goal: null };
       case 'project/list':
-        return { data: [] };
+        return { data: scenario.projects ?? [] };
       case 'slashCommands/list':
         return { data: [] };
       case 'skills/list':
@@ -714,5 +735,85 @@ describe('provider switching on an open thread', () => {
     ).toEqual([
       { method: 'turn/interrupt', params: { threadId: THREAD_ID, turnId: 'running-turn' } },
     ]);
+  });
+});
+
+describe('new chat drafts', () => {
+  const project = {
+    id: 'project-one',
+    name: 'Alpha project',
+    roots: [{ path: PROJECT_ROOT }],
+    recencyAt: null,
+  };
+
+  it('defers thread creation until the first message and keeps the preselected project', async () => {
+    const scenario: ResumeScenario = {
+      threadProvider: 'alpha',
+      sessionProvider: 'alpha',
+      projects: [project],
+      recordedRequests: [],
+    };
+    await renderWorkx(createBridge(scenario));
+
+    await act(async () => {
+      controller().newThreadInProject('project-one');
+    });
+    // 草稿态不建会话，侧栏此时没有新行。
+    expect(controller().draft).toEqual({ projectId: 'project-one' });
+    expect(controller().activeThread).toBeNull();
+    // 项目下还没有会话；侧栏要等第一条消息之后才有新行。
+    expect(controller().projects[0]?.threads).toEqual([]);
+    expect(scenario.recordedRequests?.map((entry) => entry.method)).not.toContain('thread/start');
+
+    await act(async () => {
+      await controller().sendMessage('hello');
+    });
+    expect(
+      scenario.recordedRequests?.find((entry) => entry.method === 'thread/start')?.params,
+    ).toEqual({
+      cwd: PROJECT_ROOT,
+      projectId: 'project-one',
+      runtimeWorkspaceRoots: [PROJECT_ROOT],
+      model: 'alpha-catalog-model',
+      modelProvider: 'alpha',
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+    });
+    expect(controller().draft).toBeNull();
+    expect(controller().activeThread?.id).toBe(NEW_THREAD_ID);
+    expect(controller().projects[0]?.threads.map((thread) => thread.id)).toEqual([NEW_THREAD_ID]);
+  });
+
+  it('switches the draft project and sends without one when it is cleared', async () => {
+    const scenario: ResumeScenario = {
+      threadProvider: 'alpha',
+      sessionProvider: 'alpha',
+      projects: [project],
+      recordedRequests: [],
+    };
+    await renderWorkx(createBridge(scenario));
+
+    await act(async () => {
+      controller().newThread();
+    });
+    expect(controller().draft).toEqual({ projectId: null });
+
+    await act(async () => {
+      controller().setDraftProject('project-one');
+    });
+    expect(controller().draft).toEqual({ projectId: 'project-one' });
+
+    await act(async () => {
+      controller().setDraftProject(null);
+    });
+    expect(controller().draft).toEqual({ projectId: null });
+
+    await act(async () => {
+      await controller().sendMessage('hello');
+    });
+    const startParams = scenario.recordedRequests?.find(
+      (entry) => entry.method === 'thread/start',
+    )?.params as { projectId?: string } | undefined;
+    expect(startParams?.projectId).toBeUndefined();
   });
 });

@@ -326,9 +326,8 @@ export function Sidebar({
                   onAdd={onNewChat}
                   onMore={() => setProjectsMenuOpen((value) => !value)}
                 >
-                  {draft ? <DraftThreadRow /> : null}
                   {flatThreads.map((thread) => renderThread(thread))}
-                  {flatThreads.length === 0 && !draft ? (
+                  {flatThreads.length === 0 ? (
                     <p className="px-2.5 py-1 text-[13px] text-fg-tertiary">
                       {t('sidebar.noChats')}
                     </p>
@@ -361,7 +360,6 @@ export function Sidebar({
                           onRemove={() => onRemoveProject(project)}
                         />
 
-                        {draft?.projectId === project.id ? <DraftThreadRow indent /> : null}
                         {expanded
                           ? visibleThreads.map((thread) => renderThread(thread, true))
                           : null}
@@ -444,9 +442,8 @@ export function Sidebar({
 
             {organize === 'project' ? (
               <SidebarSection label={t('sidebar.recents')} onAdd={onNewChat}>
-                {draft?.projectId === null ? <DraftThreadRow /> : null}
                 {recents.map((thread) => renderThread(thread))}
-                {recents.length === 0 && draft?.projectId !== null ? (
+                {recents.length === 0 ? (
                   <p className="px-2.5 py-1 text-[13px] text-fg-tertiary">
                     {t('sidebar.noChats')}
                   </p>
@@ -468,20 +465,6 @@ export function Sidebar({
         </div>
       </div>
     </aside>
-  );
-}
-
-function DraftThreadRow({ indent = false }: { indent?: boolean }) {
-  const { t } = useI18n();
-  return (
-    <div
-      className={cn(
-        'flex h-[30px] items-center rounded-lg bg-active pr-8 text-[13px] text-fg',
-        indent ? 'pl-[38px]' : 'pl-2.5',
-      )}
-    >
-      <span className="truncate">{t('common.newChat')}</span>
-    </div>
   );
 }
 
