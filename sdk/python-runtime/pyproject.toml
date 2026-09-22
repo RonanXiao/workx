@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "workx-cli-bin"
-version = "0.1.7"
+version = "0.1.8"
 description = "Pinned Workx CLI runtime for the Python SDK"
 readme = "README.md"
 requires-python = ">=3.10"

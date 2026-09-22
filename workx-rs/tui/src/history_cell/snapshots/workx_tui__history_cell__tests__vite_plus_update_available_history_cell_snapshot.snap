@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
 expression: rendered
 ---
 ╭────────────────────────────────────────────────────╮
-│ ✨ Update available! 0.1.7 -> 9.9.9                │
+│ ✨ Update available! 0.1.8 -> 9.9.9                │
 │ Run vp install -g @ronanxiao/workx to update.      │
 │                                                    │
 │ See full release notes:                            │
