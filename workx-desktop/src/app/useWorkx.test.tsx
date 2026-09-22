@@ -410,35 +410,36 @@ async function renderWorkx(bridge: WorkxBridge): Promise<void> {
   await waitFor(() => latest?.status === 'ready', 'app-server boot');
 }
 
-describe('local providers', () => {
-  it.each(['lmstudio', 'ollama'])('loads and persists editable %s configuration', async (id) => {
+describe('provider configuration', () => {
+  it('loads and persists an edited provider configuration', async () => {
     await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
-    expect(controller().providers).toEqual(['alpha', 'beta', 'lmstudio', 'ollama']);
+    // 只列出配置里的 provider，内置的 OpenAI、Amazon Bedrock、LM Studio、Ollama 不出现。
+    expect(controller().providers).toEqual(['alpha', 'beta']);
     const saved = {
-      ...controller().providerConfigs[id],
+      ...controller().providerConfigs.beta,
       name: 'Local server', baseUrl: 'http://192.168.1.2:8080/v1',
       wireApi: 'chat' as const, apiKey: 'local-secret', modelsEndpoint: '/models',
     };
-    await act(async () => { await controller().saveProvider(id, saved); });
-    expect(controller().providerConfigs[id]).toEqual(saved);
+    await act(async () => { await controller().saveProvider('beta', saved); });
+    expect(controller().providerConfigs.beta).toEqual(saved);
   });
 
   it('applies the persisted provider order on boot', async () => {
     window.localStorage.setItem(
       PROVIDER_ORDER_STORAGE_KEY,
-      JSON.stringify(['ollama', 'beta']),
+      JSON.stringify(['beta', 'alpha']),
     );
     await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
     // 已记录的排在前，未记录的按 ID 升序追加。
-    expect(controller().providers).toEqual(['ollama', 'beta', 'alpha', 'lmstudio']);
+    expect(controller().providers).toEqual(['beta', 'alpha']);
   });
 
   it('reorders providers and persists the custom order', async () => {
     await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
-    await act(async () => { controller().reorderProviders(['ollama', 'beta', 'alpha']); });
-    expect(controller().providers).toEqual(['ollama', 'beta', 'alpha', 'lmstudio']);
+    await act(async () => { controller().reorderProviders(['beta', 'alpha']); });
+    expect(controller().providers).toEqual(['beta', 'alpha']);
     expect(window.localStorage.getItem(PROVIDER_ORDER_STORAGE_KEY))
-      .toBe(JSON.stringify(['ollama', 'beta', 'alpha']));
+      .toBe(JSON.stringify(['beta', 'alpha']));
   });
 });
 
@@ -457,7 +458,7 @@ describe('model catalog', () => {
       createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
     );
     await waitFor(
-      () => Object.keys(controller().modelsByProvider).length === 4,
+      () => Object.keys(controller().modelsByProvider).length === 2,
       'provider model catalog',
     );
     // 启动时逐个 provider 拉取：alpha 已是配置里的 provider，不需要切换；结束后恢复配置里的选择。
@@ -465,13 +466,12 @@ describe('model catalog', () => {
       recordedRequests
         .filter((entry) => entry.method === 'config/batchWrite')
         .flatMap((entry) => providerWrites(entry.params)),
-    ).toEqual(['beta', 'lmstudio', 'ollama', 'alpha']);
-    expect(recordedRequests.filter((entry) => entry.method === 'model/list')).toHaveLength(4);
+    ).toEqual(['beta', 'alpha']);
+    expect(recordedRequests.filter((entry) => entry.method === 'model/list')).toHaveLength(2);
     // 目录落盘，下次启动直接命中缓存。
     expect(controller().modelsByProvider.beta.models.map((model) => model.id))
       .toEqual(['beta-catalog-model']);
-    expect(Object.keys(readModelCatalog()).sort())
-      .toEqual(['alpha', 'beta', 'lmstudio', 'ollama']);
+    expect(Object.keys(readModelCatalog()).sort()).toEqual(['alpha', 'beta']);
   });
 
   it('selects a model of another provider and switches the provider in one write', async () => {
@@ -480,7 +480,7 @@ describe('model catalog', () => {
       createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
     );
     await waitFor(
-      () => Object.keys(controller().modelsByProvider).length === 4,
+      () => Object.keys(controller().modelsByProvider).length === 2,
       'provider model catalog',
     );
     recordedRequests.length = 0;
@@ -505,7 +505,7 @@ describe('model catalog', () => {
       createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
     );
     await waitFor(
-      () => Object.keys(controller().modelsByProvider).length === 4,
+      () => Object.keys(controller().modelsByProvider).length === 2,
       'provider model catalog',
     );
     recordedRequests.length = 0;
@@ -525,7 +525,7 @@ describe('model catalog', () => {
       createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha', recordedRequests }),
     );
     await waitFor(
-      () => Object.keys(controller().modelsByProvider).length === 4,
+      () => Object.keys(controller().modelsByProvider).length === 2,
       'provider model catalog',
     );
     recordedRequests.length = 0;
@@ -551,7 +551,7 @@ describe('model catalog', () => {
       recordedRequests,
     }));
     await waitFor(
-      () => Object.keys(controller().modelsByProvider).length === 3,
+      () => Object.keys(controller().modelsByProvider).length === 1,
       'remaining provider model catalog',
     );
     expect(controller().modelsByProvider.beta).toBeUndefined();

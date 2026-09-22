@@ -74,18 +74,14 @@ function projectWorkspaceRoots(
   return [...new Set(project.roots.map((root) => root.path))];
 }
 
-export const BUILTIN_MODEL_PROVIDER_IDS = [
+/// 保留的 provider ID 前缀：仅用于避免新建的 provider ID 与服务端保留名冲突。
+export const RESERVED_MODEL_PROVIDER_IDS = [
   'openai',
   'amazon-bedrock',
   'amazon-bedrock-runtime',
   'ollama',
   'lmstudio',
 ];
-
-export const LOCAL_MODEL_PROVIDER_DEFAULTS = {
-  lmstudio: { name: 'LM Studio', base_url: 'http://localhost:1234/v1' },
-  ollama: { name: 'Ollama', base_url: 'http://localhost:11434/v1' },
-};
 
 /// provider 展示顺序的本地持久化键。顺序是展示层偏好，不写入 config.toml。
 export const PROVIDER_ORDER_STORAGE_KEY = 'workx.providerOrder';
@@ -318,21 +314,51 @@ function normalizeCustomModel(raw: unknown): CustomModelConfig | null {
   };
 }
 
+/// 规范化模型列表地址。服务端用 `base_url.join(models_endpoint)` 求最终 URL，
+/// 因此绝对路径里重复的 `base_url` 路径段会被拼成两遍（例如
+/// `base_url=https://host/zen/go/v1` + `models_endpoint=/zen/go/v1/models`），
+/// 这里剥掉重复前缀，保留最后一段 `/models`。完整 URL 与非重复路径原样返回。
+export function normalizeModelsEndpoint(endpoint: string, baseUrl: string): string {
+  const trimmed = endpoint.trim();
+  if (!trimmed.startsWith('/')) {
+    return trimmed;
+  }
+  let basePath: string;
+  try {
+    basePath = new URL(baseUrl.trim()).pathname.replace(/\/+$/, '');
+  } catch {
+    return trimmed;
+  }
+  if (!basePath || basePath === '/') {
+    return trimmed;
+  }
+  const segments = basePath.split('/').filter(Boolean);
+  let path = trimmed;
+  while (segments.length > 0 && path.startsWith(`/${segments[0]}/`)) {
+    path = path.slice(segments[0].length + 1);
+    segments.shift();
+  }
+  return path;
+}
+
 export function normalizeProviderConfig(raw: unknown): ProviderConfig {
   const value = (raw ?? {}) as Record<string, unknown>;
   const wireApi = value.wire_api;
   const rawBalance = (value.balance ?? {}) as Record<string, unknown>;
+  const baseUrl = typeof value.base_url === 'string' ? value.base_url : '';
   return {
     name: typeof value.name === 'string' ? value.name : '',
-    baseUrl: typeof value.base_url === 'string' ? value.base_url : '',
+    baseUrl,
     apiKey:
       typeof value.experimental_bearer_token === 'string'
         ? value.experimental_bearer_token
         : '',
     envKey: typeof value.env_key === 'string' ? value.env_key : '',
     wireApi: wireApi === 'chat' ? 'chat' : wireApi === 'auto' ? 'auto' : 'responses',
-    modelsEndpoint:
+    modelsEndpoint: normalizeModelsEndpoint(
       typeof value.models_endpoint === 'string' ? value.models_endpoint : '',
+      baseUrl,
+    ),
     balance: {
       endpoint: typeof rawBalance.endpoint === 'string' ? rawBalance.endpoint : '',
       valuePath: typeof rawBalance.value_path === 'string' ? rawBalance.value_path : '',
@@ -361,7 +387,10 @@ function providerConfigToToml(config: ProviderConfig): Record<string, unknown> {
     value.env_key = config.envKey.trim();
   }
   if (config.modelsEndpoint.trim()) {
-    value.models_endpoint = config.modelsEndpoint.trim();
+    value.models_endpoint = normalizeModelsEndpoint(
+      config.modelsEndpoint,
+      config.baseUrl,
+    );
   }
   const balanceEndpoint = config.balance.endpoint.trim();
   const balanceValuePath = config.balance.valuePath.trim();
@@ -1299,11 +1328,12 @@ export function useWorkx(): WorkxController {
       (response.config.model_providers as Record<string, unknown> | undefined) ?? {};
     setProviderConfigs(
       Object.fromEntries(
-        Object.entries({ ...LOCAL_MODEL_PROVIDER_DEFAULTS, ...raw })
-          .map(([id, value]) => [id, normalizeProviderConfig(value)]),
+        Object.entries(raw).map(([id, value]) => [id, normalizeProviderConfig(value)]),
       ),
     );
-    const ids = Array.from(new Set([...Object.keys(raw), ...Object.keys(LOCAL_MODEL_PROVIDER_DEFAULTS)]));
+    // 只展示配置里的 provider：内置的 OpenAI、Amazon Bedrock、LM Studio、Ollama
+    // 不在列表里出现，避免选中后触发指向 chatgpt.com 等非目标端点的请求。
+    const ids = Object.keys(raw);
     const ordered = orderProviderIds(ids, providerOrderRef.current);
     providersRef.current = ordered;
     setProviders(ordered);
@@ -1569,10 +1599,7 @@ export function useWorkx(): WorkxController {
     async (id: string) => {
       const wasActive = id === providerId;
       const remaining = providers.filter((candidate) => candidate !== id);
-      const custom = remaining.filter(
-        (candidate) => !BUILTIN_MODEL_PROVIDER_IDS.includes(candidate),
-      );
-      const fallback = custom[0] ?? (remaining.includes('openai') ? 'openai' : remaining[0]);
+      const fallback = remaining[0];
       const edits: { keyPath: string; value: unknown; mergeStrategy: 'replace' }[] = [
         { keyPath: `model_providers.${id}`, value: null, mergeStrategy: 'replace' },
       ];

@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`edits and saves the built-in lmstudio provider 1`] = `
+exports[`edits and saves the lmstudio provider 1`] = `
 {
   "buttons": [
     "LM Studiolmstudio",
@@ -8,6 +8,7 @@ exports[`edits and saves the built-in lmstudio provider 1`] = `
     "Add provider",
     "Check balance",
     "Add model",
+    "Delete",
     "Save",
   ],
   "fields": [
@@ -38,13 +39,13 @@ exports[`edits and saves the built-in lmstudio provider 1`] = `
     },
   ],
   "note": [
-    "LM Studio and Ollama can be edited, but cannot be deleted. Changes are saved to your Workx configuration.",
+    "Only providers defined in your Workx configuration are listed. Changes are saved to that configuration.",
     "No custom models yet.",
   ],
 }
 `;
 
-exports[`edits and saves the built-in ollama provider 1`] = `
+exports[`edits and saves the ollama provider 1`] = `
 {
   "buttons": [
     "LM Studiolmstudio",
@@ -52,6 +53,7 @@ exports[`edits and saves the built-in ollama provider 1`] = `
     "Add provider",
     "Check balance",
     "Add model",
+    "Delete",
     "Save",
   ],
   "fields": [
@@ -82,7 +84,7 @@ exports[`edits and saves the built-in ollama provider 1`] = `
     },
   ],
   "note": [
-    "LM Studio and Ollama can be edited, but cannot be deleted. Changes are saved to your Workx configuration.",
+    "Only providers defined in your Workx configuration are listed. Changes are saved to that configuration.",
     "No custom models yet.",
   ],
 }

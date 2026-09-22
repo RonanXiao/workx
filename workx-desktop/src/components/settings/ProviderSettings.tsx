@@ -2,8 +2,7 @@ import { GripVertical, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import {
-  BUILTIN_MODEL_PROVIDER_IDS,
-  LOCAL_MODEL_PROVIDER_DEFAULTS,
+  RESERVED_MODEL_PROVIDER_IDS,
   REASONING_EFFORT_OPTIONS,
   type CustomModelConfig,
   type InputModality,
@@ -74,7 +73,7 @@ function providerNameHash(name: string): string {
   return hash.toString(16).padStart(8, '0');
 }
 
-/// 由显示名生成 provider ID，保证结果合法、非内置、且不与已配置的 ID 冲突。
+/// 由显示名生成 provider ID，保证结果合法、不是保留名、且不与已配置的 ID 冲突。
 function providerIdFromName(name: string, taken: string[]): string {
   const slug = name
     .trim()
@@ -84,12 +83,12 @@ function providerIdFromName(name: string, taken: string[]): string {
     .slice(0, PROVIDER_ID_MAX_SLUG_LENGTH)
     .replace(/-+$/g, '');
   const base =
-    slug && PROVIDER_ID_PATTERN.test(slug) && !BUILTIN_MODEL_PROVIDER_IDS.includes(slug)
+    slug && PROVIDER_ID_PATTERN.test(slug) && !RESERVED_MODEL_PROVIDER_IDS.includes(slug)
       ? slug
       : `provider-${providerNameHash(name)}`;
   let candidate = base;
   let suffix = 2;
-  while (taken.includes(candidate) || BUILTIN_MODEL_PROVIDER_IDS.includes(candidate)) {
+  while (taken.includes(candidate) || RESERVED_MODEL_PROVIDER_IDS.includes(candidate)) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
@@ -855,7 +854,7 @@ export function ProviderSettings({
 
           <div className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
             <div className="min-w-0">
-              {selectedId && !Object.hasOwn(LOCAL_MODEL_PROVIDER_DEFAULTS, selectedId) ? (
+              {selectedId ? (
                 confirmDelete ? (
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[12px] text-fg-secondary">

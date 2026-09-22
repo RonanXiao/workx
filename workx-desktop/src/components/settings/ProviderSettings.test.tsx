@@ -3,9 +3,15 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-import { LOCAL_MODEL_PROVIDER_DEFAULTS, normalizeProviderConfig } from '../../app/useWorkx';
+import { normalizeProviderConfig } from '../../app/useWorkx';
 import { I18nProvider, LANGUAGE_STORAGE_KEY } from '../../lib/i18n';
 import { ProviderSettings } from './ProviderSettings';
+
+/// 测试用 provider 配置：桌面端不再内置任何 provider，这里显式声明两条本地方案。
+const TEST_PROVIDER_DEFAULTS = {
+  lmstudio: { name: 'LM Studio', base_url: 'http://localhost:1234/v1' },
+  ollama: { name: 'Ollama', base_url: 'http://localhost:11434/v1' },
+};
 
 let host: HTMLDivElement;
 let root: Root;
@@ -23,8 +29,8 @@ afterEach(async () => {
   host.remove();
 });
 
-it.each(['lmstudio', 'ollama'])('edits and saves the built-in %s provider', async (id) => {
-  const configs = Object.fromEntries(Object.entries(LOCAL_MODEL_PROVIDER_DEFAULTS)
+it.each(['lmstudio', 'ollama'])('edits and saves the %s provider', async (id) => {
+  const configs = Object.fromEntries(Object.entries(TEST_PROVIDER_DEFAULTS)
     .map(([key, value]) => [key, normalizeProviderConfig(value)]));
   const providerIds = Object.keys(configs).sort();
   const onSave = vi.fn().mockResolvedValue(undefined);
@@ -61,7 +67,7 @@ it.each(['lmstudio', 'ollama'])('edits and saves the built-in %s provider', asyn
 });
 
 it('reorders providers by drag and drop', async () => {
-  const configs = Object.fromEntries(Object.entries(LOCAL_MODEL_PROVIDER_DEFAULTS)
+  const configs = Object.fromEntries(Object.entries(TEST_PROVIDER_DEFAULTS)
     .map(([key, value]) => [key, normalizeProviderConfig(value)]));
   const onReorder = vi.fn();
   await act(async () => root.render(
