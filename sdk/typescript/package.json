@@ -1,6 +1,6 @@
 {
   "name": "@ronanxiao/workx-sdk",
-  "version": "0.1.7",
+  "version": "0.1.5",
   "description": "TypeScript SDK for Workx APIs.",
   "repository": {
     "type": "git",
