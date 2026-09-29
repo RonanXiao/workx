@@ -39,6 +39,36 @@ use crate::provider::enforce_managed_residency;
 
 const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 const MODELS_ENDPOINT: &str = "/models";
+/// 未配置 `models_endpoint` 时的默认目录路径，相对 `base_url` 追加。
+const DEFAULT_MODELS_ENDPOINT: &str = "models";
+
+/// 拼接模型目录地址，语义与 `Provider::url_for_path` 一致：endpoint 路径追加在
+/// `base_url` 之后，`base_url` 自带的路径段始终保留。
+///
+/// `base_url` 是 API 根地址（例如 `https://host/zen/go/v1`），`models_endpoint` 是相对
+/// 它的目录路径（例如 `/models`）。以 `/` 开头的 endpoint 只表示「相对 API 根」，不做
+/// 同源绝对路径判定，因此不会丢掉 `base_url` 的路径前缀。传入完整 URL 时按原样使用。
+pub(crate) fn join_models_endpoint(
+    base_url: &str,
+    endpoint: &str,
+) -> Result<String, url::ParseError> {
+    let trimmed = endpoint.trim();
+    // 已经是完整 URL 时直接使用，避免把协议和主机重复拼进路径。
+    if trimmed.contains("://") {
+        return Ok(trimmed.to_string());
+    }
+    let mut base = url::Url::parse(base_url)?;
+    let base_path = base.path().trim_end_matches('/');
+    let endpoint_path = trimmed.trim_start_matches('/');
+    // endpoint 一律追加在 base_url 路径之后，不做「同源绝对路径」判定。
+    let joined = match (base_path.is_empty(), endpoint_path.is_empty()) {
+        (_, true) => base_path.to_string(),
+        (true, false) => format!("/{endpoint_path}"),
+        (false, false) => format!("{base_path}/{endpoint_path}"),
+    };
+    base.set_path(&joined);
+    Ok(base.to_string())
+}
 
 /// Provider-owned OpenAI-compatible `/models` endpoint.
 #[derive(Debug)]
@@ -88,16 +118,13 @@ impl OpenAiModelsEndpoint {
         let api_auth = resolve_provider_auth(auth.as_ref(), &self.provider_info)?;
         let external = self.provider_info.uses_external_models();
         let request_url = if external {
-            let base = url::Url::parse(&api_provider.base_url)
-                .map_err(|err| WorkxErr::InvalidRequest(err.to_string()))?;
             let endpoint = self
                 .provider_info
                 .models_endpoint
                 .as_deref()
-                .unwrap_or("/v1/models");
-            base.join(endpoint)
+                .unwrap_or(DEFAULT_MODELS_ENDPOINT);
+            join_models_endpoint(&api_provider.base_url, endpoint)
                 .map_err(|err| WorkxErr::InvalidRequest(err.to_string()))?
-                .to_string()
         } else {
             ModelsClient::<ReqwestTransport>::request_url(&api_provider, client_version)
         };

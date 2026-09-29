@@ -69,7 +69,7 @@ pub struct ModelProviderInfo {
     pub name: String,
     /// Base URL for the provider's OpenAI-compatible API.
     pub base_url: Option<String>,
-    /// 模型列表地址；支持同源绝对路径或完整 URL，默认 /v1/models。
+    /// 模型列表地址；相对 `base_url` 追加，也支持完整 URL，默认 `models`。
     pub models_endpoint: Option<String>,
     /// Optional provider-owned balance or quota endpoint used to query remaining credit.
     #[serde(default)]

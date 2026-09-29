@@ -314,13 +314,14 @@ function normalizeCustomModel(raw: unknown): CustomModelConfig | null {
   };
 }
 
-/// 规范化模型列表地址。服务端用 `base_url.join(models_endpoint)` 求最终 URL，
-/// 因此绝对路径里重复的 `base_url` 路径段会被拼成两遍（例如
-/// `base_url=https://host/zen/go/v1` + `models_endpoint=/zen/go/v1/models`），
-/// 这里剥掉重复前缀，保留最后一段 `/models`。完整 URL 与非重复路径原样返回。
+/// 规范化模型列表地址。服务端把 `models_endpoint` 追加到 `base_url` 的路径之后，
+/// 因此 endpoint 只需是相对 API 根的路径。用户若把 `base_url` 的路径前缀重复写进
+/// endpoint（例如 `base_url=https://host/zen/go/v1` 又写 `/zen/go/v1/models`），
+/// 会造成前缀重复拼接；这里剥掉重复前缀，保留相对段落 `/models`。
+/// 完整 URL 与不含重复前缀的路径原样返回。
 export function normalizeModelsEndpoint(endpoint: string, baseUrl: string): string {
   const trimmed = endpoint.trim();
-  if (!trimmed.startsWith('/')) {
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) {
     return trimmed;
   }
   let basePath: string;

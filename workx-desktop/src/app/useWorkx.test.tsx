@@ -13,6 +13,7 @@ import type { AppServerNotification, WorkxBridge } from '../preload';
 import {
   MODEL_CATALOG_STORAGE_KEY,
   PROVIDER_ORDER_STORAGE_KEY,
+  normalizeModelsEndpoint,
   readModelCatalog,
   useWorkx,
   type WorkxController,
@@ -447,6 +448,17 @@ async function renderWorkx(bridge: WorkxBridge): Promise<void> {
 }
 
 describe('provider configuration', () => {
+  it('strips a duplicated base path prefix from the models endpoint', () => {
+    // 服务端会把 endpoint 追加到 base_url 之后，因此重复写入 base 前缀时需要剥掉。
+    const base = 'https://opencode.ai/zen/go/v1';
+    expect(normalizeModelsEndpoint('/models', base)).toBe('/models');
+    expect(normalizeModelsEndpoint('  /models  ', base)).toBe('/models');
+    expect(normalizeModelsEndpoint('/zen/go/v1/models', base)).toBe('/models');
+    expect(normalizeModelsEndpoint('', base)).toBe('');
+    expect(normalizeModelsEndpoint('https://other.example/models', base))
+      .toBe('https://other.example/models');
+  });
+
   it('loads and persists an edited provider configuration', async () => {
     await renderWorkx(createBridge({ threadProvider: 'alpha', sessionProvider: 'alpha' }));
     // 只列出配置里的 provider，内置的 OpenAI、Amazon Bedrock、LM Studio、Ollama 不出现。

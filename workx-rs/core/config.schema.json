@@ -2374,7 +2374,7 @@
           "type": "object"
         },
         "models_endpoint": {
-          "description": "模型列表地址；支持同源绝对路径或完整 URL，默认 /v1/models。",
+          "description": "模型列表地址；相对 `base_url` 追加，也支持完整 URL，默认 `models`。",
           "type": "string"
         },
         "name": {

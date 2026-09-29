@@ -15,8 +15,9 @@ use workx_protocol::openai_models::ReasoningEffort;
 #[tokio::test]
 async fn external_catalog_uses_configured_path_and_saved_key_without_bundled_models() {
     let server = MockServer::start().await;
+    // base_url 的路径前缀必须保留：endpoint 追加在其后，而不是替换整段路径。
     Mock::given(method("GET"))
-        .and(path("/catalog"))
+        .and(path("/vendor/api/catalog"))
         .and(header("authorization", "Bearer saved-test-key"))
         .respond_with(ResponseTemplate::new(200).set_body_json(
             serde_json::json!({"data":[{"id":"vendor-a"},{"id":"vendor-b"},{"id":"vendor-a"}]}),
@@ -26,7 +27,7 @@ async fn external_catalog_uses_configured_path_and_saved_key_without_bundled_mod
         .await;
     let info = ModelProviderInfo {
         name: "custom".into(),
-        base_url: Some(format!("{}/v1/responses", server.uri())),
+        base_url: Some(format!("{}/vendor/api", server.uri())),
         models_endpoint: Some("/catalog".into()),
         balance: None,
         experimental_bearer_token: Some("saved-test-key".into()),
@@ -55,10 +56,7 @@ async fn external_catalog_uses_configured_path_and_saved_key_without_bundled_mod
 async fn external_catalog_switch_and_empty_results_do_not_reuse_other_models() {
     let server = MockServer::start().await;
     for (route, body) in [
-        (
-            "/v1/models",
-            serde_json::json!({"data":[{"id":"only-first"}]}),
-        ),
+        ("/models", serde_json::json!({"data":[{"id":"only-first"}]})),
         ("/second", serde_json::json!({"data":[]})),
     ] {
         Mock::given(method("GET"))
@@ -96,7 +94,7 @@ async fn external_catalog_switch_and_empty_results_do_not_reuse_other_models() {
 async fn external_catalog_inherits_bundled_reasoning_levels() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/v1/models"))
+        .and(path("/models"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "object": "list",
             "data": [{"id": "gpt-5.6-terra"}, {"id": "vendor-image-model"}],
@@ -157,4 +155,54 @@ async fn external_catalog_inherits_bundled_reasoning_levels() {
             ),
         ]
     );
+}
+
+#[test]
+fn join_models_endpoint_keeps_base_url_path_prefix() {
+    let cases = [
+        // base_url 是 API 根地址，endpoint 追加在其路径之后，前缀始终保留。
+        (
+            "https://opencode.ai/zen/go/v1",
+            "/models",
+            "https://opencode.ai/zen/go/v1/models",
+        ),
+        (
+            "https://codex.echol.top/v1",
+            "/models",
+            "https://codex.echol.top/v1/models",
+        ),
+        (
+            "https://api.deepseek.com",
+            "/v1/models",
+            "https://api.deepseek.com/v1/models",
+        ),
+        // 默认 endpoint `models` 同样追加在 base_url 路径之后。
+        (
+            "https://opencode.ai/zen/go/v1",
+            "models",
+            "https://opencode.ai/zen/go/v1/models",
+        ),
+        (
+            "https://codex.echol.top/v1",
+            "models",
+            "https://codex.echol.top/v1/models",
+        ),
+        // base_url 已含末尾斜杠时不产生重复斜杠。
+        ("https://host/v1/", "/models", "https://host/v1/models"),
+        // base_url 无路径时 endpoint 决定路径。
+        ("https://host", "/v1/models", "https://host/v1/models"),
+        // 完整 URL 原样使用。
+        (
+            "https://host/v1",
+            "https://other.example/models",
+            "https://other.example/models",
+        ),
+    ];
+    for (base, endpoint, expected) in cases {
+        assert_eq!(
+            join_models_endpoint(base, endpoint).expect("join should succeed"),
+            expected,
+            "base={base} endpoint={endpoint}"
+        );
+    }
 }

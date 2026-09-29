@@ -1197,7 +1197,7 @@ mod tests {
         let remote_models = vec![remote_model("provider-model")];
 
         Mock::given(method("GET"))
-            .and(path("/v1/models"))
+            .and(path("/models"))
             .and(header_regex("Authorization", "Bearer provider-token"))
             .respond_with(
                 ResponseTemplate::new(200)
